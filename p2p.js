@@ -252,11 +252,11 @@ var Peer = $component ({
             this.ondata (this, event)
     },
 
-//     ondatachannel: function (event) {
-//         this.channel = event.channel
+    ondatachannel: function (event) {
+        this.channel = event.channel
 //         this.channel.onopen = this.onopen
 //         this.channel.onmessage = this.onmessage
-//     },
+    },
 
     localAddress: function () {
         return this.connection.localDescription.bestCandidateAddress () },
@@ -272,9 +272,7 @@ var Peer = $component ({
         this.connection = new RTCPeerConnection (this.config, null)
         this.connection.onicecandidate = this.onicecandidate
         this.connection.onnegotiationneeded = this.onnegotiationneeded
-        this.connection.ondatachannel = function (event) {
-            this.channel = event.channel
-        }
+        this.connection.ondatachannel = this.ondatachannel
 
         this.channel = this.connection.createDataChannel (this.channelName, this.options)
         this.channel.onopen = this.onopen
