@@ -75,7 +75,7 @@ var Address = $component ({
         this.port = parseInt (ip.pop ())
         this.version = (ip.length > 1) ? 6 : 4
         this.ip = (this.version == 6) ? inet6_atoh (ip) : inet_atoh (ip.first)
-        
+        return this
     },
 
     toBase64: function () {
