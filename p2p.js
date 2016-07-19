@@ -208,11 +208,12 @@ var Peer = $component ({
     onicecandidate: function (event) {
 
         if (event.candidate) {
-            
+
             this.connection.addIceCandidate (event.candidate).then ({
 
             }).catch (reason => {
-                throw new Error (reason)
+                log.e (reason)
+//                 throw new Error (reason)
             })
 
         } else {
