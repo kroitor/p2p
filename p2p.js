@@ -164,7 +164,7 @@ $mixin (RTCSessionDescription, {
             let [, priority, ip, port] = 
                 x.match (/^a=candidate:(?:\S+\s){3}(\S+)\s(\S+)\s(\S+)/i)
             return {
-                address: new Address ({ ip: inet_atoh (ip), port: parseInt (port) }),
+                address: (new Address ()).fromString (ip + ':' + port),
                 priority: parseInt (priority),
             }
         }).filter (x => x.address.isNotLocal ())
