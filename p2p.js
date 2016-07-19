@@ -37,7 +37,7 @@
                 _(9 - l.length).times (() => 0))))
 
     $global.inet6_htoa = (ip =>
-        ip.map (x => x.toString (16)).join (':').replace (/(?:\:\0)+/, ':'))
+        ip.map (x => x.toString (16)).join (':').replace (/(:0)+/, ':'))
 
     $global.inet_atoh = (ip => 
         ip.split ('.').reduce ((prev, cur) => 
