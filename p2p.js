@@ -253,7 +253,9 @@ var Peer = $component ({
     },
 
     ondatachannel: function (event) {
-        this.channel = event.channel },
+        this.channel = event.channel
+        this.channel.onmessage = this.onmessage
+    },
 
     localAddress: function () {
         return this.connection.localDescription.bestCandidateAddress () },
@@ -273,7 +275,7 @@ var Peer = $component ({
 
         this.channel = this.connection.createDataChannel (this.channelName, this.options)
         this.channel.onopen = this.onopen
-        this.channel.onmessage = this.onmessage 
+//         this.channel.onmessage = this.onmessage 
     },
 })
 
