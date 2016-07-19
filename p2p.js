@@ -320,16 +320,15 @@ var Peer = $component ({
 
         this.connection.ondatachannel = function (event) {
 
+            event.channel.onmessage = function (event) {
+                log (event.data)
+                if (self.ondata)
+                    self.ondata (self, event) }
+
             event.channel.onopen = function () {
-                if (event.channel.readyState === 'open') {
-                    event.channel.onmessage = function (event) {
-                        log (event.data)
-                        if (self.ondata)
-                            self.ondata (self, event)
-                    }
+                if (event.channel.readyState === 'open')
                     if (self.onconnected)
-                        self.onconnected (self)
-                }}
+                        self.onconnected (self) }
 
             self.channel = event.channel
         }
