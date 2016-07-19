@@ -205,9 +205,17 @@ var Peer = $component ({
         channelName: 'data',
     },
 
-    onicecandidate: function (event) {   
-        log (event.candidate.candidate)     
-        if (!event.candidate) {
+    onicecandidate: function (event) {
+
+        if (event.candidate) {
+            
+            this.connection.addIceCandidate (candidate).then ({
+
+            }).catch (reason => {
+                throw new Error ()
+            })
+
+        } else {
             if (this.connection.localDescription.type == 'offer') {
                 if (this.onoffer) {
                     this.onoffer (this, this.connection.localDescription.toBase64 ())
