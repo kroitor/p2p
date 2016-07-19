@@ -339,7 +339,8 @@ var App = $singleton (Component, {
             App.printMessage (data.message, remoteAddress)
         else if (data.type == 'system') {
             App.printSystemMessage (event.data, remoteAddress)
-        }
+        } else
+            log (peer, event)
     },
 
     newToolbarNode: function (address) {
