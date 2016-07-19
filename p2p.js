@@ -209,12 +209,13 @@ var Peer = $component ({
 
         if (event.candidate) {
 
-            this.connection.addIceCandidate (event.candidate).then ({
+            log (event.candidate.candidate)
+//             this.connection.addIceCandidate (event.candidate).then ({
 
-            }).catch (reason => {
-                log.e (reason)
-//                 throw new Error (reason)
-            })
+//             }).catch (reason => {
+//                 log.e (reason)
+// //                 throw new Error (reason)
+//             })
 
         } else {
             if (this.connection.localDescription.type == 'offer') {
