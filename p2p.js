@@ -206,7 +206,7 @@ var Peer = $component ({
     },
 
     onicecandidate: function (event) {   
-        log (event.candidate)     
+        log (event.candidate.candidate)     
         if (!event.candidate) {
             if (this.connection.localDescription.type == 'offer') {
                 if (this.onoffer) {
