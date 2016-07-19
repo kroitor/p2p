@@ -30,6 +30,15 @@
         $global.ntohl = (x => x)
     }
 
+    $global.inet6_atoh = (ip => 
+        _.flatten (ip.split (':').map ((v, k, l) =>
+            v.length ? 
+                parseInt (v, 16) :
+                _(9 - l.length).times (() => 0))))
+
+    $global.inet6_htoa = (ip =>
+        ip.map (x => x.toString (16)).join (':').replace (/(?:\:\0)+/, ':'))
+
     $global.inet_atoh = (ip => 
         ip.split ('.').reduce ((prev, cur) => 
             ((prev << 8) | parseInt (cur, 10)) >>> 0))
@@ -207,18 +216,8 @@ var Peer = $component ({
 
     onicecandidate: function (event) {
 
-        if (event.candidate) {
+        if (!event.candidate) {
 
-//             log (event.candidate.candidate)
-//             this.connection.addIceCandidate (event.candidate).then ({
-
-//             }).catch (reason => {
-//                 log.e (reason)
-// //                 throw new Error (reason)
-//             })
-
-        } else {
-            
             log (this.connection.localDescription.sdp)
             if (this.connection.localDescription.type == 'offer') {
                 if (this.onoffer) {
@@ -242,7 +241,6 @@ var Peer = $component ({
 
     createAnswer: function () {
         this.connection.createAnswer ().then (answer => {
-            log (answer.sdp)
             this.connection.setLocalDescription (answer)
         }).catch (reason => {
             throw new Error (reason)
@@ -250,7 +248,6 @@ var Peer = $component ({
 
     createOffer: function () {
         this.connection.createOffer ().then (offer => {
-            log (offer.sdp)
             this.connection.setLocalDescription (offer)
         }).catch (reason => {
             throw new Error (reason)
