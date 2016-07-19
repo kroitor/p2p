@@ -324,6 +324,7 @@ var Peer = $component ({
             self.channel.onopen = function () {
             if (self.channel.readyState === 'open') {
                 self.channel.onmessage = function (event) {
+                    log (event.data)
                     if (self.ondata)
                         self.ondata (self, event)
                 }
