@@ -229,6 +229,7 @@ var Peer = $component ({
 
     createAnswer: function () {
         this.connection.createAnswer ().then (answer => {
+            log (answer.sdp)
             this.connection.setLocalDescription (answer)
         }).catch (reason => {
             throw new Error (reason)
@@ -236,6 +237,7 @@ var Peer = $component ({
 
     createOffer: function () {
         this.connection.createOffer ().then (offer => {
+            log (offer.sdp)
             this.connection.setLocalDescription (offer)
         }).catch (reason => {
             throw new Error (reason)
