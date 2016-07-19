@@ -177,8 +177,7 @@ $mixin (RTCSessionDescription, {
 
         let [ iceUfrag, icePwd, fingerprint, udp, answer ] = s.split ('-')
 
-        var address = new Address ()
-        address.fromBase64 (udp)
+        var address = (new Address ()).fromBase64 (udp)
         
         var sdp = [
             'v=0',
@@ -199,7 +198,7 @@ $mixin (RTCSessionDescription, {
                 '1',                        // component
                 'udp',                      // transport
                 '1',                        // priority
-                 inet_htoa (address.ip),    // ip
+                 address.ipToString (),     // ip
                  address.port,              // port
                  'typ host',                // type
             ].join (' '), ]
