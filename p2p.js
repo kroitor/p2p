@@ -108,7 +108,7 @@ var Address = $component ({
         
         if (this.version == 6) {
             this.ip = []
-            for (i = 0; i < decoded.length; i += 2)
+            for (i = 0; i < (decoded.length - 2); i += 2)
                 this.ip.push (dataView.getUint16 (i))   
             this.port = dataView.getUint16 (i)
         } else {
