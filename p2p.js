@@ -209,7 +209,7 @@ var Peer = $component ({
 
         if (event.candidate) {
 
-            log (event.candidate.candidate)
+//             log (event.candidate.candidate)
 //             this.connection.addIceCandidate (event.candidate).then ({
 
 //             }).catch (reason => {
@@ -218,6 +218,8 @@ var Peer = $component ({
 //             })
 
         } else {
+            
+            log (this.connection.localDescription.sdp)
             if (this.connection.localDescription.type == 'offer') {
                 if (this.onoffer) {
                     this.onoffer (this, this.connection.localDescription.toBase64 ())
