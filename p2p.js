@@ -74,7 +74,7 @@ var Address = $component ({
         var ip = s.split (':')
         this.port = parseInt (ip.pop ())
         this.version = (ip.length > 1) ? 6 : 4
-        this.ip = (this.version == 6) ? inet6_atoh (ip) : inet_atoh (ip.first)
+        this.ip = (this.version == 6) ? inet6_atoh (ip.join (':')) : inet_atoh (ip.first)
         return this
     },
 
