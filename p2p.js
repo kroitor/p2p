@@ -30,11 +30,12 @@
         $global.ntohl = (x => x)
     }
 
-    $global.inet6_atoh = (ip => 
-        _.flatten (ip.split (':').map ((v, k, l) =>
+    $global.inet6_atoh = (ip => {
+        return _.flatten (ip.split (':').map ((v, k, l) =>
             v.length ? 
                 parseInt (v, 16) :
-                _(9 - l.length).times (() => 0))))
+                _(9 - l.length).times (() => 0)))
+                })
 
     $global.inet6_htoa = (ip =>
         ip.map (x => x.toString (16)).join (':').replace (/(:0)+/, ':'))
