@@ -55,35 +55,72 @@
 
 var Address = $component ({
 
+    $defaults: {
+        version: 4,
+    },
+
     init: function () {
 
     },
 
+    ipToString: function () {
+        return (this.version == 6) ? inet6_htoa (this.ip) : inet_htoa (this.ip)
+    },
+
     toString: function () {
-        return inet_htoa (this.ip) + ':' + this.port },
+        return ipToString (this.ip) + ':' + this.port },
 
     fromString: function (s) {
-        let [ip, port] = s.split (':')
-        this.ip = inet_atoh (ip)
-        this.port = parseInt (port)
+        var ip = s.split (':')
+        this.port = parseInt (ip.pop ())
+        this.version = (ip.length > 1) ? 6 : 4
+        this.ip = (this.version == 6) ? inet6_atoh (ip) : inet_atoh (ip.first)
+        
     },
 
     toBase64: function () {
-        var dataView = new DataView (new ArrayBuffer (6))
-        dataView.setUint32 (0, this.ip)
-        dataView.setUint16 (4, this.port)
+
+        var dataView
+
+        if (this.version == 6) {
+            dataView = new DataView (new ArrayBuffer (16 + 2))
+            var i = 0
+            for (; i < this.ip.length; i++)
+                dataView.setUint16 (2 * i, this.ip[i])
+            dataView.setUint16 (2 * i, this.port)
+        } else {
+            var dataView = new DataView (new ArrayBuffer (4 + 2))
+            dataView.setUint32 (0, this.ip)
+            dataView.setUint16 (4, this.port)
+        }
         return btoa (String.fromCharCode (... new Uint8Array (dataView.buffer)))
     },
 
     fromBase64: function (s) {
+        
         var decoded = atob (s)
         $assert (decoded.length > 0)
         var ui = new Uint8Array (decoded.length)
         for (var i = 0; i < decoded.length; i++)
             ui[i] = decoded.charCodeAt (i)
         var dataView = new DataView (ui.buffer)
-        this.ip = dataView.getUint32 (0)
-        this.port = dataView.getUint16 (4)
+
+        this.version = (decoded.length > 6) ? 6 : 4
+        
+        if (this.version == 6) {
+
+            this.ip = []
+            var i = 0
+            for (; i < decoded.length; i += 2) {
+                ip.push (data.getUint16 (i))   
+            }
+            this.port = dataView.getUint16 (i)
+
+        } else {
+
+            this.ip = dataView.getUint32 (0)
+            this.port = dataView.getUint16 (4)
+        }
     },
 
     isLocal: function () {
@@ -266,8 +303,6 @@ var Peer = $component ({
 
     ondatachannel: function (event) {
         this.channel = event.channel
-//         this.channel.onopen = this.onopen
-//         this.channel.onmessage = this.onmessage
     },
 
     localAddress: function () {
