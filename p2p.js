@@ -407,7 +407,7 @@ var App = $singleton (Component, {
 
         this.peers.push (new Peer ({
             onoffer: function (peer, offer) {
-                log.i ('SDP Offer in Base64', offer)
+                log.i ('SDP Offer in Base64', offer, offer.length)
                 App.printSystemMessage ('<a target="_blank" href="#' + offer + '">#' + offer + '</a>')
             },
             ondata: (peer, event) => App.ondata (peer, event),
