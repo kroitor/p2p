@@ -82,7 +82,6 @@ var Address = $component ({
     toBase64: function () {
 
         var dataView
-
         if (this.version == 6) {
             dataView = new DataView (new ArrayBuffer (16 + 2))
             var i = 0
@@ -105,20 +104,14 @@ var Address = $component ({
         for (var i = 0; i < decoded.length; i++)
             ui[i] = decoded.charCodeAt (i)
         var dataView = new DataView (ui.buffer)
-
         this.version = (decoded.length > 6) ? 6 : 4
         
         if (this.version == 6) {
-
             this.ip = []
-            var i = 0
-            for (; i < decoded.length; i += 2) {
+            for (i = 0; i < decoded.length; i += 2)
                 ip.push (data.getUint16 (i))   
-            }
             this.port = dataView.getUint16 (i)
-
         } else {
-
             this.ip = dataView.getUint32 (0)
             this.port = dataView.getUint16 (4)
         }
