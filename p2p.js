@@ -390,7 +390,7 @@ var App = $singleton (Component, {
 
     newToolbarNode: function (address) {
         return N ('peer', [
-            N ('ip').text (inet_htoa (address.ip)), 
+            N ('ip').text (address.ipToString ()), 
             ':', N ('port').text (address.port),
         ]).appendTo (App.toolbar)
     },
