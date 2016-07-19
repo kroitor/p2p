@@ -240,7 +240,7 @@ var Peer = $component ({
         // data channel options
 
         options: {
-            ordered: true,
+            ordered: false,
         },
 
         channelName: 'data',
