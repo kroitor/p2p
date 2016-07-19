@@ -228,7 +228,6 @@ var Peer = $component ({
         answer: undefined,      // SDP answer
 
         // ICE configuration (STUN/TURN, ...)
-
         config: {
             iceServers: [{
                 urls: [
@@ -238,7 +237,6 @@ var Peer = $component ({
         },
 
         // data channel options
-
         options: {
             ordered: false,
         },
@@ -247,60 +245,48 @@ var Peer = $component ({
     },
 
     onicecandidate: function (event) {
-
         if (!event.candidate) {
-
-            log (this.connection.localDescription.sdp)
             if (this.connection.localDescription.type == 'offer') {
-                if (this.onoffer) {
+                if (this.onoffer)
                     this.onoffer (this, this.connection.localDescription.toBase64 ())
-                }
             } else if (this.connection.localDescription.type == 'answer') {
                 if (this.onanswer)
                     this.onanswer (this, [
                         this.connection.localDescription.toBase64 (),
                         this.remoteAddress ().toBase64 (),
-                    ].join ('-'))
-            }}},
+                    ].join ('-')) }}},
 
     onnegotiationneeded: function () {
         if (this.remoteDescription) {
             this.connection.setRemoteDescription (this.remoteDescription)
             this.createAnswer ()
-        } else {
-            this.createOffer ()
-        }},
+        } else 
+            this.createOffer () },
 
     createAnswer: function () {
         this.connection.createAnswer ().then (answer => {
             this.connection.setLocalDescription (answer)
         }).catch (reason => {
-            throw new Error (reason)
-        })},
+            throw new Error (reason) })},
 
     createOffer: function () {
         this.connection.createOffer ().then (offer => {
             this.connection.setLocalDescription (offer)
         }).catch (reason => {
-            throw new Error (reason)
-        })},
+            throw new Error (reason) })},
 
     onopen: function () {
         if (this.channel.readyState === 'open') {
             if (this.onconnected)
-                this.onconnected (this)
-        }},
+                this.onconnected (this) }},
 
     onmessage: function (event) {
         if (this.ondata)
-            this.ondata (this, event)
-    },
+            this.ondata (this, event) },
 
-//     ondatachannel: function (event) {
-//         this.channel = event.channel
-//         this.channel.onopen = this.onopen
-//         this.channel.onmessage = this.onmessage 
-//     },
+    ondatachannel: function (event) {
+        this.channel = event.channel
+        this.channel.onopen = this.onopen },
 
     localAddress: function () {
         return this.connection.localDescription.bestCandidateAddress () },
@@ -312,36 +298,13 @@ var Peer = $component ({
         return this.channel.send (message) },
 
     init: function () {
-
         var self = this
         this.connection = new RTCPeerConnection (this.config, null)
         this.connection.onicecandidate = this.onicecandidate
         this.connection.onnegotiationneeded = this.onnegotiationneeded
-
-        this.connection.ondatachannel = function (event) {
-
-//             event.channel.onmessage = function (event) {
-//                 log (event.data)
-//                 if (self.ondata)
-//                     self.ondata (self, event) }
-
-            event.channel.onopen = function () {
-                if (event.channel.readyState === 'open')
-                    if (self.onconnected)
-                        self.onconnected (self) }
-
-            self.channel = event.channel
-        }
-
-
+        this.connection.ondatachannel = this.ondatachannel
         this.channel = this.connection.createDataChannel (this.channelName, this.options)
-        this.channel.onmessage = this.onmessage
-        
-//         this.connection.ondatachannel = this.ondatachannel
-//         this.channel = this.connection.createDataChannel (this.channelName, this.options)
-//         this.channel.onopen = this.onopen
-//         this.channel.onmessage = this.onmessage 
-    },
+        this.channel.onmessage = this.onmessage },
 })
 
 //-----------------------------------------------------------------------------
@@ -443,7 +406,7 @@ var App = $singleton (Component, {
         if (remoteDescription.answer) {
 
             this.printSystemMessage ('Receiving answer...')
-            log.i ('SDP Answer in Base64', hash)
+            log.i ('SDP Answer in Base64', hash, hash.length)
             var peer = this.peers
                 .filter (peer => remoteDescription.answer == 
                     peer.localAddress ().toBase64 ()).first
@@ -453,7 +416,7 @@ var App = $singleton (Component, {
         } else {
 
             this.printSystemMessage ('Receiving offer...')
-            log.i ('SDP Offer in Base64', hash)
+            log.i ('SDP Offer in Base64', hash, hash.length)
             var toolbarNode = this.newToolbarNode (remoteDescription.address)
             this.peers.push (new Peer ({
                 remoteDescription: remoteDescription,
