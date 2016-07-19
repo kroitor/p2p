@@ -331,9 +331,10 @@ var Peer = $component ({
                     self.onconnected (self)
             }}}
 
-//         this.connection.ondatachannel = this.ondatachannel
 
-//         this.connection.createDataChannel (this.channelName, this.options)
+        this.connection.createDataChannel (this.channelName, this.options)
+        
+//         this.connection.ondatachannel = this.ondatachannel
 //         this.channel = this.connection.createDataChannel (this.channelName, this.options)
 //         this.channel.onopen = this.onopen
 //         this.channel.onmessage = this.onmessage 
