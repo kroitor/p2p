@@ -115,6 +115,8 @@ var Address = $component ({
             this.ip = dataView.getUint32 (0)
             this.port = dataView.getUint16 (4)
         }
+
+        return this
     },
 
     isLocal: function () {
