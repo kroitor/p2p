@@ -69,7 +69,7 @@ var Address = $component ({
     },
 
     toString: function () {
-        return ipToString (this.ip) + ':' + this.port },
+        return this.ipToString () + ':' + this.port },
 
     fromString: function (s) {
         var ip = s.split (':')
