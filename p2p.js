@@ -212,7 +212,7 @@ var Peer = $component ({
             this.connection.addIceCandidate (event.candidate).then ({
 
             }).catch (reason => {
-                throw new Error ()
+                throw new Error (reason)
             })
 
         } else {
