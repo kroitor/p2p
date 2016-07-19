@@ -205,7 +205,8 @@ var Peer = $component ({
         channelName: 'data',
     },
 
-    onicecandidate: function (event) {        
+    onicecandidate: function (event) {   
+        log (event.candidate)     
         if (!event.candidate) {
             if (this.connection.localDescription.type == 'offer') {
                 if (this.onoffer) {
