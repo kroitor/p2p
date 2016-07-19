@@ -209,7 +209,7 @@ var Peer = $component ({
 
         if (event.candidate) {
             
-            this.connection.addIceCandidate (candidate).then ({
+            this.connection.addIceCandidate (event.candidate).then ({
 
             }).catch (reason => {
                 throw new Error ()
