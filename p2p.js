@@ -158,16 +158,15 @@ $mixin (RTCSessionDescription, {
             .join (':') },
 
     bestCandidateAddress: function () {
-        return this.sdp.match (/^a=candidate:.+?$/gmi).map (x => {
-            let [, priority, ip, port] = 
-                x.match (/^a=candidate:(?:\S+\s){3}(\S+)\s(\S+)\s(\S+)/i)
-            return {
-                address: (new Address ()).fromString (ip + ':' + port),
-                priority: parseInt (priority),
-            }
-        })
-        .filter (x => (x.address.isNotLocal () && (x.address.version == 4)))
-        .reduce ((prev, cur) => prev.priority >= cur.priority ? prev : cur).address },
+        return this.sdp
+            .match (/^a=candidate:.+?$/gmi).map (x => {
+                let [, priority, ip, port] = 
+                    x.match (/^a=candidate:(?:\S+\s){3}(\S+)\s(\S+)\s(\S+)/i)
+                return {
+                    address: (new Address ()).fromString (ip + ':' + port),
+                    priority: parseInt (priority) }})
+            .filter (x => ((x.address.version == 4) && x.address.isNotLocal ()))
+            .reduce ((prev, cur) => prev.priority >= cur.priority ? prev : cur).address },
 
     toBase64: function () {
         return [
