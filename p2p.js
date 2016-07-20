@@ -286,12 +286,12 @@ var Peer = $component ({
                 this.onconnected (this) }},
 
     onmessage: function (event) {
-        log ((new Date ()).toISOString (), 'onmessage', event)
+        log ((new Date ()).toISOString (), 'onmessage', event.data)
         if (this.ondata)
             this.ondata (this, event) },
 
     ondatachannel: function (event) {
-        log ((new Date ()).toISOString (), 'ondatachannel', event)
+        log ((new Date ()).toISOString (), 'ondatachannel')
         this.channel = event.channel
         this.channel.onopen = this.onopen },
 
