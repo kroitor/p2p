@@ -120,6 +120,8 @@ var Address = $component ({
     },
 
     isLocal: function () {
+        if (this.version == 6)
+            return false;
         return ((this.ip >= 0x0a000000 && this.ip <= 0x0affffff) || // 10.0.0.0 - 10.255.255.255
                 (this.ip >= 0xac100000 && this.ip <= 0xac1fffff) || // 172.16.0.0 - 172.31.255.255
                 (this.ip >= 0xc0a80000 && this.ip <= 0xc0a8ffff))   // 192.168.0.0 - 192.168.255.255
@@ -158,12 +160,13 @@ $mixin (RTCSessionDescription, {
     bestCandidateAddress: function () {
         return this.sdp.match (/^a=candidate:.+?$/gmi).map (x => {
             let [, priority, ip, port] = 
-                x.match (/^a=candidate:(?:\S+\s){3}(\S+)\s(\d+\.\d+\.\d+\.\d+)\s(\S+)/i)
+                x.match (/^a=candidate:(?:\S+\s){3}(\S+)\s(\S+)\s(\S+)/i)
             return {
                 address: (new Address ()).fromString (ip + ':' + port),
                 priority: parseInt (priority),
             }
-        }).filter (x => x.address.isNotLocal ())
+        })
+        .filter (x => (x.address.isNotLocal () && (x.address.version == 4)))
         .reduce ((prev, cur) => prev.priority >= cur.priority ? prev : cur).address },
 
     toBase64: function () {
