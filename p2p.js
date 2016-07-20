@@ -449,13 +449,7 @@ var App = $singleton (Component, {
             html: [
                 'Usage:',
                 '<em>/offer|invite</em> - offer invitation',
-                '<em>/' + [
-                    '[[[' + window.location.protocol + '//]',
-                    '' + window.location.hostname + ']',
-                    '[:' + window.location.port + ']',
-                    window.location.pathname,
-                ].join ('') + ']#]([a-zA-Z0-9+/=]{80})</em> - acknowledge a peer',
-                '<em>/user|name|username|nick|nickname</em> - change name',
+                '<em>/.+#([a-zA-Z0-9+/=]+)</em> - acknowledge a peer',
                 'Any other command starting with symbol <em>/</em> prints this help message',
             ].join ('\n'),
             class: 'system message',
