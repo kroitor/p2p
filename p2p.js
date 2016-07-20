@@ -158,7 +158,7 @@ $mixin (RTCSessionDescription, {
     bestCandidateAddress: function () {
         return this.sdp.match (/^a=candidate:.+?$/gmi).map (x => {
             let [, priority, ip, port] = 
-                x.match (/^a=candidate:(?:\S+\s){3}(\S+)\s(\S+)\s(\S+)/i)
+                x.match (/^a=candidate:(?:\S+\s){3}(\S+)\s(\d+\.\d+\.\d+\.\d+)\s(\S+)/i)
             return {
                 address: (new Address ()).fromString (ip + ':' + port),
                 priority: parseInt (priority),
@@ -428,7 +428,7 @@ var App = $singleton (Component, {
             this.peers.push (new Peer ({
                 remoteDescription: remoteDescription,
                 onanswer: function (peer, answer) {
-                    log.i ('SDP Answer in Base64', answer)
+                    log.i ('SDP Answer in Base64', answer, answer.length)
                     App.printSystemMessage ('<a target="_blank" href="#' + answer + '">#' + answer + '</a>')
                 },
                 ondata: (peer, event) => App.ondata (peer, event),
