@@ -245,6 +245,7 @@ var Peer = $component ({
     },
 
     onicecandidate: function (event) {
+        log ((new Date ()).toISOString (), 'onicecandidate', event.candidate)
         if (!event.candidate) {
             if (this.connection.localDescription.type == 'offer') {
                 if (this.onoffer)
@@ -257,6 +258,7 @@ var Peer = $component ({
                     ].join ('-')) }}},
 
     onnegotiationneeded: function () {
+        log ((new Date ()).toISOString (), 'onnegotiationneeded')
         if (this.remoteDescription) {
             this.connection.setRemoteDescription (this.remoteDescription)
             this.createAnswer ()
@@ -264,27 +266,32 @@ var Peer = $component ({
             this.createOffer () },
 
     createAnswer: function () {
+        log ((new Date ()).toISOString (), 'createAnswer')
         this.connection.createAnswer ().then (answer => {
             this.connection.setLocalDescription (answer)
         }).catch (reason => {
             throw new Error (reason) })},
 
     createOffer: function () {
+        log ((new Date ()).toISOString (), 'createOffer')
         this.connection.createOffer ().then (offer => {
             this.connection.setLocalDescription (offer)
         }).catch (reason => {
             throw new Error (reason) })},
 
     onopen: function () {
+        log ((new Date ()).toISOString (), 'onopen')
         if (this.channel.readyState === 'open') {
             if (this.onconnected)
                 this.onconnected (this) }},
 
     onmessage: function (event) {
+        log ((new Date ()).toISOString (), 'onmessage', event)
         if (this.ondata)
             this.ondata (this, event) },
 
     ondatachannel: function (event) {
+        log ((new Date ()).toISOString (), 'ondatachannel', event)
         this.channel = event.channel
         this.channel.onopen = this.onopen },
 
