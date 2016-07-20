@@ -137,17 +137,21 @@ var Address = $component ({
 $mixin (RTCSessionDescription, {
 
     iceUfrag: function () {
-        return this.sdp.match (/^a=ice-ufrag:([a-zA-Z0-9+/=]+)/mi)[1] },
+        return this.sdp.match (/^a=ice-ufrag:([a-zA-Z0-9+/=]+)/mi)[1]
+    },
     
     icePwd: function () {
-        return this.sdp.match (/^a=ice-pwd:([a-zA-Z0-9+/=]+)/mi)[1] },
+        return this.sdp.match (/^a=ice-pwd:([a-zA-Z0-9+/=]+)/mi)[1]
+    },
     
     fingerprint: function () { 
-        return this.sdp.match (/^a=fingerprint:\S+\s([a-fA-F0-9:]+)/mi)[1] },
+        return this.sdp.match (/^a=fingerprint:\S+\s([a-fA-F0-9:]+)/mi)[1]
+    },
 
     fingerprintToBase64: function () {
         return btoa (String.fromCharCode.apply (String,
-            this.fingerprint ().split (':').map (x => parseInt (x, 16)))) },
+            this.fingerprint ().split (':').map (x => parseInt (x, 16))))
+    },
 
     fingerprintFromBase64: function (fingerprintBase64) {
          return atob (fingerprintBase64)
@@ -157,25 +161,31 @@ $mixin (RTCSessionDescription, {
                 var e = c.charCodeAt (0).toString (16).toUpperCase ()
                 if (d < 16) e = '0' + e
                 return e })
-            .join (':') },
+            .join (':')
+    },
 
     bestCandidateAddress: function () {
-        return this.sdp
-            .match (/^a=candidate:.+?$/gmi).map (x => {
-                let [, priority, ip, port] = 
-                    x.match (/^a=candidate:(?:\S+\s){3}(\S+)\s(\S+)\s(\S+)/i)
-                return {
-                    address: (new Address ()).fromString (ip + ':' + port),
-                    priority: parseInt (priority) }})
-            .filter (x => ((x.address.version == 4) && x.address.isNotLocal ()))
-            .reduce ((prev, cur) => prev.priority >= cur.priority ? prev : cur).address },
+        return this.sdp.match (/^a=candidate:.+?$/gmi).map (x => {
+            let [, priority, ip, port] = 
+                x.match (/^a=candidate:(?:\S+\s){3}(\S+)\s(\S+)\s(\S+)/i)
+            return {
+                address: (new Address ()).fromString (ip + ':' + port),
+                priority: parseInt (priority) }
+        }).filter (x =>
+            ((x.address.version == 4) && x.address.isNotLocal ()))
+        .reduce ((prev, cur) => 
+            prev.priority >= cur.priority ? prev : cur)
+        .address
+    },
 
     toBase64: function () {
         return [
             this.iceUfrag (),
             this.icePwd (),
             this.fingerprintToBase64 (),
-            this.bestCandidateAddress ().toBase64 () ].join ('-') },
+            this.bestCandidateAddress ().toBase64 ()
+        ].join ('-')
+    },
 
     fromBase64: function (s) {
 
@@ -259,7 +269,10 @@ var Peer = $component ({
                     this.onanswer (this, [
                         this.connection.localDescription.toBase64 (),
                         this.remoteAddress ().toBase64 (),
-                    ].join ('-')) }}},
+                    ].join ('-'))
+            }
+        }
+    },
 
     onnegotiationneeded: function () {
         log ((new Date ()).toISOString ())
@@ -267,46 +280,65 @@ var Peer = $component ({
             this.connection.setRemoteDescription (this.remoteDescription)
             this.createAnswer ()
         } else 
-            this.createOffer () },
+            this.createOffer ()
+    },
 
     createAnswer: function () {
         log ((new Date ()).toISOString ())
         this.connection.createAnswer ().then (answer => {
             this.connection.setLocalDescription (answer)
         }).catch (reason => {
-            throw new Error (reason) })},
+            throw new Error (reason)
+        })
+    },
 
     createOffer: function () {
         log ((new Date ()).toISOString ())
         this.connection.createOffer ().then (offer => {
             this.connection.setLocalDescription (offer)
         }).catch (reason => {
-            throw new Error (reason) })},
+            throw new Error (reason)
+        })
+    },
 
     onopen: function () {
         log ((new Date ()).toISOString ())
         if (this.channel.readyState === 'open') {
-            if (this.onconnected)
-                this.onconnected (this) }},
+            if (this.onconnect)
+                this.onconnect (this)
+        }
+    },
+
+    onclose: function () {
+        log ((new Date ()).toISOString ())
+        if (this.ondisconnect)
+            this.ondisconnect (this)
+    },
 
     onmessage: function (event) {
         log ((new Date ()).toISOString (), event.data)
         if (this.ondata)
-            this.ondata (this, event) },
+            this.ondata (this, event)
+    },
 
     ondatachannel: function (event) {
         log ((new Date ()).toISOString ())
         this.channel = event.channel
-        this.channel.onopen = this.onopen },
+        this.channel.onopen = this.onopen
+        this.channel.onclose = this.onclose
+    },
 
     localAddress: function () {
-        return this.connection.localDescription.bestCandidateAddress () },
+        return this.connection.localDescription.bestCandidateAddress ()
+    },
 
     remoteAddress: function () {
-        return this.connection.remoteDescription.bestCandidateAddress () },
+        return this.connection.remoteDescription.bestCandidateAddress ()
+    },
 
     send: function (message) {
-        return this.channel.send (message) },
+        return this.channel.send (message)
+    },
 
     init: function () {
         var self = this
@@ -315,7 +347,8 @@ var Peer = $component ({
         this.connection.onnegotiationneeded = this.onnegotiationneeded
         this.connection.ondatachannel = this.ondatachannel
         this.channel = this.connection.createDataChannel (this.channelName, this.options)
-        this.channel.onmessage = this.onmessage },
+        this.channel.onmessage = this.onmessage
+    },
 })
 
 //-----------------------------------------------------------------------------
@@ -323,12 +356,10 @@ var Peer = $component ({
 var App = $singleton (Component, {
 
     $defaults: {
-        peers: [],
-    },
+        peers: [], },
 
     init: function () {
-        document.ready (this.start)
-    },
+        document.ready (this.start) },
 
     onkeypress: function (event) {
         event = event || window.event
@@ -371,7 +402,9 @@ var App = $singleton (Component, {
     },
 
     printMessage: (message, from) => App.print ({ html: message, from: from }),
-    printSystemMessage: (message, from) => App.printMessage (message, from).attr ({ system: true }),
+    
+    printSystemMessage: (message, from) => 
+        App.printMessage (message, from).attr ({ system: true }),
 
     ondata: (peer, event) => {
         var data = JSON.parse (event.data)
@@ -398,16 +431,71 @@ var App = $singleton (Component, {
         this.peers.push (new Peer ({
             onoffer: function (peer, offer) {
                 log.i ('SDP Offer in Base64', offer, offer.length)
-                App.printSystemMessage ('<a target="_blank" href="#' + offer + '">#' + offer + '</a>')
+                var url = []
+                App.printSystemMessage ([
+                    '<a target="_blank" href="#', offer, '">#',
+                        offer,
+                    '</a>'].join ('')) 
             },
             ondata: (peer, event) => App.ondata (peer, event),
-            onconnected: peer => {
-                App.newToolbarNode (peer.remoteAddress ()).attr ({ connected: 'true' })
-                log.gg ('Connected as', peer.localAddress ().toString (), 'to', peer.remoteAddress ().toString ())
+            onconnect: peer => {
+                var address = peer.remoteAddress ()
+                var node = App.newToolbarNode (address).attr ({ connected: 'true' })
+                peer.toolbarNode = node
+                log.gg ((new Date ()).toISOString (),
+                    'Connected as', peer.localAddress ().toString (),
+                    'to', peer.remoteAddress ().toString ())
 
                 // send all peers in a system message
             },
+            ondisconnect: peer => {
+                log.ee ((new Date ()).toISOString (),
+                    'Disconnected from', peer.remoteAddress ().toString ())
+                peer.toolbarNode.removeFromParent ()
+            },
         }))
+    },
+
+    startHandshake: function (description) {
+
+        this.printSystemMessage ('Receiving offer...')
+        log.i ('SDP Offer in Base64', hash, hash.length)
+        this.peers.push (new Peer ({
+            remoteDescription: description,
+            onanswer: function (peer, answer) {
+                peer.toolbarNode = App.newToolbarNode (description.address)
+                log.i ('SDP Answer in Base64', answer, answer.length)
+                App.printSystemMessage ([
+                    '<a target="_blank" href="#' + answer + '">#',
+                        answer,
+                    '</a>'].join ('')) },
+            ondata: (peer, event) => App.ondata (peer, event),
+            onconnect: peer => { 
+                peer.toolbarNode.attr ({ connected: true })
+                log.gg ((new Date ()).toISOString (),
+                    'Connected as', peer.localAddress ().toString (),
+                    'to', peer.remoteAddress ().toString ())
+            },
+            ondisconnect: peer => {
+                log.ee ((new Date ()).toISOString (),
+                    'Disconnected from', peer.remoteAddress ().toString ())
+                peer.toolbarNode.removeFromParent ()
+            },
+        }))
+    },
+
+    finishHandshake: function (description) {
+
+        this.printSystemMessage ('Receiving answer...')
+
+        log.i ('SDP Answer in Base64', hash, hash.length)
+
+        var peer = this.peers
+            .filter (peer => 
+                description.answer == 
+                    peer.localAddress ().toBase64 ()).first
+
+        peer.connection.setRemoteDescription (description)
     },
 
     answer: function (hash) {
@@ -419,8 +507,9 @@ var App = $singleton (Component, {
             this.printSystemMessage ('Receiving answer...')
             log.i ('SDP Answer in Base64', hash, hash.length)
             var peer = this.peers
-                .filter (peer => remoteDescription.answer == 
-                    peer.localAddress ().toBase64 ()).first
+                .filter (peer =>
+                    remoteDescription.answer ==
+                        peer.localAddress ().toBase64 ()).first
 
             peer.connection.setRemoteDescription (remoteDescription)
         
@@ -428,17 +517,24 @@ var App = $singleton (Component, {
 
             this.printSystemMessage ('Receiving offer...')
             log.i ('SDP Offer in Base64', hash, hash.length)
-            var toolbarNode = this.newToolbarNode (remoteDescription.address)
+            // var toolbarNode = this.newToolbarNode (remoteDescription.address)
             this.peers.push (new Peer ({
                 remoteDescription: remoteDescription,
                 onanswer: function (peer, answer) {
+                    peer.toolbarNode = App.newToolbarNode (remoteDescription.address)
                     log.i ('SDP Answer in Base64', answer, answer.length)
-                    App.printSystemMessage ('<a target="_blank" href="#' + answer + '">#' + answer + '</a>')
-                },
+                    App.printSystemMessage ([
+                        '<a target="_blank" href="#' + answer + '">#',
+                            answer,
+                        '</a>'].join ('')) },
                 ondata: (peer, event) => App.ondata (peer, event),
-                onconnected: peer => { 
-                    toolbarNode.attr ({ connected: true })
+                onconnect: peer => { 
+                    peer.toolbarNode.attr ({ connected: true })
                     log.gg ('Connected as', peer.localAddress ().toString (), 'to', peer.remoteAddress ().toString ())
+                },
+                ondisconnect: peer => {
+                    log.ee ('Disconnected from', peer.remoteAddress ().toString ())
+                    peer.toolbarNode.removeFromParent ()
                 },
             }))
         }
@@ -453,43 +549,35 @@ var App = $singleton (Component, {
                 'Any other command starting with symbol <em>/</em> prints this help message',
             ].join ('\n'),
             class: 'system message',
-        })
-    },
+        }) 
+   },
 
-    sendMessage: (peer, type, message) => peer.send (JSON.stringify ({ type: type, message: message })),
-    sendUserMessage:   (peer, message) => App.sendMessage (peer, 'message', message),
-    sendSystemMessage: (peer, message) => App.sendMessage (peer, 'system',  message),
+    sendMessage: (peer, type, message) => 
+        peer.send (JSON.stringify ({ type: type, message: message })),
+
+    sendUserMessage:   (peer, message) => 
+        App.sendMessage (peer, 'message', message),
+
+    sendSystemMessage: (peer, message) => 
+        App.sendMessage (peer, 'system',  message),
 
     send: function (message) {
-
         var words = message.split (' ')
         var firstWord = words[0]
-
         if (firstWord.length && firstWord[0] == '/') {
-
             this.printSystemMessage (message)
-
             if (['/invite', '/offer'].contains (firstWord)) {
-
                 this.offer ()
-
             } else if (/#([a-zA-Z0-9+/=-]+)/.test (message)) {
-
                 let [, hash] = message.match (/#([a-zA-Z0-9+/=-]+)/)
                 this.answer (hash)
-
             } else if ((firstWord == '/name') && (words.length > 1)) {
                 var name = words[1]
-                this.peers.each (peer => App.sendSystemMessage (peer, {
-                    name: name
-                }))
-            } else {
-                
+                this.peers.each (peer => 
+                    App.sendSystemMessage (peer, { name: name }))
+            } else 
                 this.printHelp ()
-            }
-
         } else {
-
             this.printMessage (message, 'you')
             this.peers.each (peer => App.sendUserMessage (peer, message))
         }
