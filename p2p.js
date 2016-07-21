@@ -266,18 +266,12 @@ var Peer = $component ({
     onicecandidate: function (event) {
         log ((new Date ()).toISOString (),
             event.candidate ? event.candidate.candidate : event.candidate)
-        if (!event.candidate) {
-            if (this.connection.localDescription.type == 'offer') {
-                if (this.onoffer)
-                    this.onoffer (this,
-                        this.connection.localDescription.toBase64 ())
-            } else if (this.connection.localDescription.type == 'answer') {
-                if (this.onanswer)
-                    this.onanswer (this, [
-                        this.connection.localDescription.toBase64 (),
-                        this.remoteAddress ().toBase64 (),
-                    ].join ('-'))
-            }
+        if (!event.candidate && this.onopen) {
+            var description = this.connection.localDescription
+            var base64 = [ description.toBase64 () ]
+            if (description.type == 'answer')
+                base64.push (this.remoteAddress().toBase64 ())                
+            this.onopen (this, description, base64.join ('-'))
         }
     },
 
@@ -308,7 +302,7 @@ var Peer = $component ({
         })
     },
 
-    onopen: function () {
+    oncreate: function () {
         log ((new Date ()).toISOString ())
         if (this.channel.readyState === 'open') {
             if (this.onconnect)
@@ -331,7 +325,7 @@ var Peer = $component ({
     ondatachannel: function (event) {
         log ((new Date ()).toISOString ())
         this.channel = event.channel
-        this.channel.onopen = this.onopen
+        this.channel.onopen = this.oncreate
         this.channel.onclose = this.onclose
     },
 
@@ -369,42 +363,6 @@ var App = $singleton (Component, {
 
     init: function () {
         document.ready (this.start) },
-
-    interface: function () {
-        return {
-            onoffer: function (peer, offer) {
-                log.i ((new Date ()).toISOString (),
-                    'SDP Offer in Base64', offer, offer.length)
-                App.printSystemMessage (
-                    '<a target="_blank" href="#' + offer + '">#'
-                        + offer +
-                    '</a>') 
-            },
-            onanswer: function (peer, answer) {
-                log.i ((new Date ()).toISOString (), 
-                    'SDP Answer in Base64', answer, answer.length)
-                App.printSystemMessage (
-                    '<a target="_blank" href="#' + answer + '">#' 
-                        + answer + 
-                    '</a>')
-            },
-            ondata: (peer, event) => App.ondata (peer, event),
-            onconnect: peer => { 
-                log.gg ((new Date ()).toISOString (), 
-                    'Connected as', peer.localAddress ().toString (), 
-                    'to', peer.remoteAddress ().toString ())
-                App.printSystemMessage (
-                    'Connected as ' + peer.localAddress ().toString () + 
-                    ' to ' + peer.remoteAddress ().toString ())
-            },
-            ondisconnect: peer => {
-                log.ee ((new Date ()).toISOString (), 
-                    'Disconnected from', peer.remoteAddress ().toString ())
-                App.printSystemMessage (
-                    'Disconnected from ' + peer.remoteAddress ().toString ())
-            },
-        }
-    },
 
     onkeypress: function (event) {
         event = event || window.event
@@ -450,6 +408,31 @@ var App = $singleton (Component, {
     printSystemMessage: (message, from) => 
         App.printMessage (message, from).attr ({ system: true }),
 
+    interface: () => ({
+        onopen: (peer, description, base64) => {
+            log.i ((new Date ()).toISOString (), 'SDP',  description.type,
+                'in Base64', base64, '(' + base64.length, 'bytes)')
+            App.printSystemMessage (
+                '<a target="_blank" href="#' + base64 + '">#'
+                    + base64 + '</a>')
+        },
+        ondata: (peer, event) => App.ondata (peer, event),
+        onconnect: peer => { 
+            log.gg ((new Date ()).toISOString (), 
+                'Connected as', peer.localAddress ().toString (), 
+                'to', peer.remoteAddress ().toString ())
+            App.printSystemMessage (
+                'Connected as ' + peer.localAddress ().toString () + 
+                ' to ' + peer.remoteAddress ().toString ())
+        },
+        ondisconnect: peer => {
+            log.ee ((new Date ()).toISOString (), 
+                'Disconnected from', peer.remoteAddress ().toString ())
+            App.printSystemMessage (
+                'Disconnected from ' + peer.remoteAddress ().toString ())
+        },
+    }),
+    
     ondata: (peer, event) => {
         var data = JSON.parse (event.data)
         var remoteAddress = peer.remoteAddress ().toString ()
@@ -465,19 +448,20 @@ var App = $singleton (Component, {
         this.peers.push (new Peer (this.interface ()))
     },
 
-    startHandshake: function (description, hash) {
+    startHandshake: function (description, base64) {
 
         log.i ((new Date ()).toISOString (), 
-            'SDP Offer in Base64', hash, hash.length)
+            'SDP Offer in Base64', base64, base64.length)
         
         this.peers.push (new Peer (_.extend (this.interface (), {
             remoteDescription: description
         })))
     },
 
-    finishHandshake: function (description, hash) {
+    finishHandshake: function (description, base64) {
 
-        log.i ((new Date ()).toISOString (), 'SDP Answer in Base64', hash, hash.length)
+        log.i ((new Date ()).toISOString (),
+            'SDP Answer in Base64', base64, base64.length)
 
         var peer = this.peers
             .filter (peer => 
@@ -487,12 +471,12 @@ var App = $singleton (Component, {
         peer.connection.setRemoteDescription (description)
     },
 
-    answer: function (hash) {
-        var description = (new RTCSessionDescription ()).fromBase64 (hash)
+    answer: function (base64) {
+        var description = (new RTCSessionDescription ()).fromBase64 (base64)
         if (description.answer)
-            this.finishHandshake (description, hash)
+            this.finishHandshake (description, base64)
         else
-            this.startHandshake (description, hash)
+            this.startHandshake (description, base64)
     },
 
     printHelp: function () {
