@@ -78,7 +78,7 @@ var Address = $component ({
         return this
     },
 
-    toBase64: function () {
+    base64: $property (function () {
 
         var dataView
         if (this.version == 6) {
@@ -94,7 +94,7 @@ var Address = $component ({
         }
         return btoa (String.fromCharCode (...
             new Uint8Array (dataView.buffer)))
-    },
+    }),
 
     fromBase64: function (s) {
         
@@ -119,37 +119,37 @@ var Address = $component ({
         return this
     },
 
-    isLocal: function () {
+    isLocal: $property (function () {
         if (this.version == 6)
             return false;
         return ((this.ip >= 0x0a000000 && this.ip <= 0x0affffff) || // 10.x.x.x
                 (this.ip >= 0xac100000 && this.ip <= 0xac1fffff) || // 172.16-31.x.x
                 (this.ip >= 0xc0a80000 && this.ip <= 0xc0a8ffff))   // 192.168.x.x
-    },
+    }),
 
-    isNotLocal: function () { return !this.isLocal () },
+    isNotLocal: $property (function () { return !this.isLocal }),
 })
 
 //-----------------------------------------------------------------------------
 
 $mixin (RTCSessionDescription, {
 
-    iceUfrag: function () {
+    iceUfrag: $property (function () {
         return this.sdp.match (/^a=ice-ufrag:([a-zA-Z0-9+/=]+)/mi)[1]
-    },
+    }),
     
-    icePwd: function () {
+    icePwd: $property (function () {
         return this.sdp.match (/^a=ice-pwd:([a-zA-Z0-9+/=]+)/mi)[1]
-    },
+    }),
     
-    fingerprint: function () { 
+    fingerprint: $property (function () { 
         return this.sdp.match (/^a=fingerprint:\S+\s([a-fA-F0-9:]+)/mi)[1]
-    },
+    }),
 
-    fingerprintToBase64: function () {
+    fingerprintBase64: $property (function () {
         return btoa (String.fromCharCode.apply (String,
-            this.fingerprint ().split (':').map (x => parseInt (x, 16))))
-    },
+            this.fingerprint.split (':').map (x => parseInt (x, 16))))
+    }),
 
     fingerprintFromBase64: function (fingerprintBase64) {
          return atob (fingerprintBase64)
@@ -162,7 +162,7 @@ $mixin (RTCSessionDescription, {
             }).join (':')
     },
 
-    bestCandidateAddress: function () {
+    bestCandidateAddress: $property (function () {
         return this.sdp.match (/^a=candidate:.+?$/gmi).map (x => {
             let [, priority, ip, port] = 
                 x.match (/^a=candidate:(?:\S+\s){3}(\S+)\s(\S+)\s(\S+)/i)
@@ -170,20 +170,20 @@ $mixin (RTCSessionDescription, {
                 address: (new Address ()).fromString (ip + ':' + port),
                 priority: parseInt (priority) }
         }).filter (x =>
-            ((x.address.version == 4) && x.address.isNotLocal ()))
+            ((x.address.version == 4) && x.address.isNotLocal))
         .reduce ((prev, cur) => 
             prev.priority >= cur.priority ? prev : cur)
         .address
-    },
+    }),
 
-    toBase64: function () {
+    base64: $property (function () {
         return [
-            this.iceUfrag (),
-            this.icePwd (),
-            this.fingerprintToBase64 (),
-            this.bestCandidateAddress ().toBase64 ()
+            this.iceUfrag,
+            this.icePwd,
+            this.fingerprintBase64,
+            this.bestCandidateAddress.base64,
         ].join ('-')
-    },
+    }),
 
     fromBase64: function (s) {
 
@@ -252,9 +252,9 @@ var Peer = $component ({
         log (event.candidate ? event.candidate.candidate : event.candidate)
         if (!event.candidate && this.onopen) {
             var description = this.connection.localDescription
-            var base64 = [ description.toBase64 () ]
+            var base64 = [ description.base64 ]
             if (description.type == 'answer')
-                base64.push (this.remoteAddress.toBase64 ())                
+                base64.push (this.remoteAddress.base64)  
             this.onopen (this, description, base64.join ('-'))
         }
     },
@@ -319,11 +319,11 @@ var Peer = $component ({
     },
 
     addressMatches: function (string) {
-        return (string == this.localAddress.toBase64 ())
+        return (string == this.localAddress.base64)
     },
 
     localAddress: $property (function () {
-        return this.connection.localDescription.bestCandidateAddress ()
+        return this.connection.localDescription.bestCandidateAddress
     }),
     
     localAddressString: $property (function () {
@@ -331,7 +331,7 @@ var Peer = $component ({
     }),
     
     remoteAddress: $property (function () {
-        return this.connection.remoteDescription.bestCandidateAddress ()
+        return this.connection.remoteDescription.bestCandidateAddress
     }),
 
     remoteAddressString: $property (function () {
