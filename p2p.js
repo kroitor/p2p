@@ -254,7 +254,7 @@ var Peer = $component ({
             var description = this.connection.localDescription
             var base64 = [ description.toBase64 () ]
             if (description.type == 'answer')
-                base64.push (this.remoteAddress().toBase64 ())                
+                base64.push (this.remoteAddress.toBase64 ())                
             this.onopen (this, description, base64.join ('-'))
         }
     },
@@ -319,16 +319,24 @@ var Peer = $component ({
     },
 
     addressMatches: function (string) {
-        return (string == this.localAddress ().toBase64 ())
+        return (string == this.localAddress.toBase64 ())
     },
-    
-    localAddress: function () {
+
+    localAddress: $property (function () {
         return this.connection.localDescription.bestCandidateAddress ()
-    },
+    }),
     
-    remoteAddress: function () {
+    localAddressString: $property (function () {
+        return this.localAddress.toString ()
+    }),
+    
+    remoteAddress: $property (function () {
         return this.connection.remoteDescription.bestCandidateAddress ()
-    },
+    }),
+
+    remoteAddressString: $property (function () {
+        return this.remoteAddress.toString ()
+    }),
     
     send: function (message) {
         return this.channel.send (message) 
@@ -361,23 +369,23 @@ var Network = $singleton (Component, {
         },
         ondata: (peer, event) => {
             var data = JSON.parse (event.data)
-            var from = peer.remoteAddress ().toString ()
+            var from = peer.remoteAddressString
             switch (data.type) {
                 case 'message': App.print ({ html: data.message, from: from }); break
                 default: log (peer, event)
             }
         },
         onconnect: peer => { 
-            log.gg ('Connected as', peer.localAddress ().toString (),
-                    'to', peer.remoteAddress ().toString ())
+            log.gg ('Connected as', peer.localAddressString,
+                    'to', peer.remoteAddressString)
             App.print ([
-                'Connected as', peer.localAddress ().toString (),
-                'to', peer.remoteAddress ().toString ()
+                'Connected as', peer.localAddressString,
+                'to', peer.remoteAddressString
             ])
         },
         ondisconnect: peer => {
-            log.ee ('Disconnected from', peer.remoteAddress ().toString ())
-            App.print ([ 'Disconnected from', peer.remoteAddress ().toString () ])
+            log.ee ('Disconnected from', peer.remoteAddressString)
+            App.print ([ 'Disconnected from', peer.remoteAddressString ])
         },
     }),
 
@@ -407,7 +415,8 @@ var Network = $singleton (Component, {
 var App = $singleton (Component, {
 
     init: function () {
-        document.ready (this.start) },
+        document.ready (this.start)
+    },
 
     onkeypress: function (event) {
         event = event || window.event
@@ -427,9 +436,7 @@ var App = $singleton (Component, {
         this.input = N.one ('.input')
         this.input.onkeypress = this.onkeypress 
         this.input.focus ()
-
-        this.submit ('/')
-
+        this.usage ()
         if (window.location.hash)
             this.submit ('/' + window.location.hash)
         else 
@@ -454,6 +461,15 @@ var App = $singleton (Component, {
         this.output.scrollTop = this.output.scrollHeight    
         return node
     },
+
+    usage: function () {
+        this.print ([
+            'Usage:',
+            '<em>/offer</em> - offer invitation',
+            '<em>/ ... #([a-zA-Z0-9+/=]+)</em> - acknowledge a peer',
+            'Any other string starting with <em>/</em> prints help',
+        ].join ('\n'))
+    },
     
     submit: function (message) {
         var firstWord = message.split (' ')[0]
@@ -464,18 +480,13 @@ var App = $singleton (Component, {
                 Network.handshake (base64)
             } else if (firstWord == '/offer')
                 Network.handshake ()
-            else        
-                this.print ([
-                    'Usage:',
-                    '<em>/offer</em> - offer invitation',
-                    '<em>/ ... #([a-zA-Z0-9+/=]+)</em> - acknowledge a peer',
-                    'Any other string starting with <em>/</em> prints help',
-                ].join ('\n'))
+            else      
+                this.usage ()  
         } else {
             this.print ({ html: message, from: 'you' })
             Network.peers.each (peer => peer.send (JSON.stringify ({
                 type: 'message',
-                message: message
+                message: message,
             })))
         }
     },
