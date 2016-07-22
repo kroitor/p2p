@@ -1,4 +1,4 @@
-'use strict'; // ES6 flag
+'use strict';
 
 //-----------------------------------------------------------------------------
 
@@ -6,7 +6,6 @@
 
     Number.prototype.toHexString = function () { return this.toString (16) }
 
-    // a common wrapper for unified behaviour across all browsers
     $global.RTCPeerConnection =  $global.RTCPeerConnection ||
                                  $global.webkitRTCPeerConnection
 
@@ -359,17 +358,12 @@ var Network = $singleton (Component, {
             log.i ('Base64', description.type,
                     base64, '(' + base64.length, 'bytes)')
             App.submit ('/#' + base64)
-//             App.print (
-//                 '<a target="_blank" href="#' + base64 + '">#'
-//                     + base64 +
-//                 '</a>')
         },
         ondata: (peer, event) => {
             var data = JSON.parse (event.data)
             var from = peer.remoteAddress ().toString ()
             switch (data.type) {
                 case 'message': App.print ({ html: data.message, from: from }); break
-//                 case 'system':  App.printSystemMessage (event.data, from); break
                 default: log (peer, event)
             }
         },
