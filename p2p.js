@@ -4,8 +4,23 @@
 
 ;(() => {
 
-    Number.prototype.toHexString = function () { return this.toString (16) }
-
+    Math.uniformRandom = function (max) { 
+        return Math.floor (Math.random () * max)
+    }
+    
+    $mixin (Number, {
+        hex: $property (function () {
+            var s = this.toString (16)
+            return ((s.length % 2) ? '0' : '') + s
+        })
+    })
+    
+    $mixin (Uint8Array, { 
+        hex: $property (function () { 
+            return this.reduce ((p, c) => { return (p.hex || p) + c.hex })
+        })
+    })
+     
     $global.RTCPeerConnection =  $global.RTCPeerConnection ||
                                  $global.webkitRTCPeerConnection
 
@@ -37,7 +52,7 @@
                 })
 
     $global.inet6_htoa = (ip =>
-        ip.map (x => x.toString (16)).join (':').replace (/(:0)+/, ':'))
+        ip.map (x => x.hex).join (':').replace (/(:0)+/, ':'))
 
     $global.inet_atoh = (ip => 
         ip.split ('.').reduce ((prev, cur) => 
@@ -48,6 +63,7 @@
          ((ip >>> 16) & 0xff),
          ((ip >>>  8) & 0xff),
          ((ip >>>  0) & 0xff)].map (x => x.toString (10)).join ('.'))
+
 }) ()
 
 //-----------------------------------------------------------------------------
@@ -62,11 +78,11 @@ var Address = $component ({
 
     },
 
-    ipToString: function () {
+    ipString: $property (function () {
         return (this.version == 6) ? inet6_htoa (this.ip) : inet_htoa (this.ip)
-    },
+    }),
 
-    toString: function () { return this.ipToString () + ':' + this.port },
+    string: $property (function () { return this.ipString + ':' + this.port }),
 
     fromString: function (s) {
         var ip = s.split (':')
@@ -154,12 +170,8 @@ $mixin (RTCSessionDescription, {
     fingerprintFromBase64: function (fingerprintBase64) {
          return atob (fingerprintBase64)
             .split ('')
-            .map (c => {
-                var d = c.charCodeAt (0)
-                var e = c.charCodeAt (0).toString (16).toUpperCase ()
-                if (d < 16) e = '0' + e
-                return e
-            }).join (':')
+            .map (c => c.charCodeAt (0).hex.toUpperCase ())
+            .join (':')
     },
 
     bestCandidateAddress: $property (function () {
@@ -210,7 +222,7 @@ $mixin (RTCSessionDescription, {
                 '1',                        // component
                 'udp',                      // transport
                 '1',                        // priority
-                 address.ipToString (),     // ip
+                 address.ipString,          // ip
                  address.port,              // port
                  'typ host',                // type
             ].join (' '),
@@ -251,7 +263,7 @@ var Peer = $component ({
     onicecandidate: function (event) {
         log (event.candidate ? event.candidate.candidate : event.candidate)
         if (!event.candidate && this.onopen) {
-            var description = this.connection.localDescription
+            var description = this.localDescription
             var base64 = [ description.base64 ]
             if (description.type == 'answer')
                 base64.push (this.remoteAddress.base64)  
@@ -318,24 +330,24 @@ var Peer = $component ({
         this.channel.onclose = this.onclose
     },
 
-    addressMatches: function (string) {
-        return (string == this.localAddress.base64)
+    localDescription: $property (function () {
+        return this.connection.localDescription 
+    }),
+
+    remoteDescription: $property (function () {
+        return this.connection.remoteDescription 
+    }),
+
+    addressMatches: function (base64) {
+        return (base64 == this.localAddress.base64)
     },
 
     localAddress: $property (function () {
-        return this.connection.localDescription.bestCandidateAddress
+        return this.localDescription.bestCandidateAddress
     }),
-    
-    localAddressString: $property (function () {
-        return this.localAddress.toString ()
-    }),
-    
+        
     remoteAddress: $property (function () {
-        return this.connection.remoteDescription.bestCandidateAddress
-    }),
-
-    remoteAddressString: $property (function () {
-        return this.remoteAddress.toString ()
+        return this.remoteDescription.bestCandidateAddress
     }),
     
     send: function (message) {
@@ -355,6 +367,25 @@ var Peer = $component ({
 
 //-----------------------------------------------------------------------------
 
+var RoutingTable = $component ({
+
+})
+
+//-----------------------------------------------------------------------------
+
+var NodeID = $singleton (Component, {
+
+    init: function () {
+
+    },
+
+    random: function (length) {
+        return new Uint8Array (length).map (x => Math.uniformRandom (256))
+    },
+})
+
+//-----------------------------------------------------------------------------
+
 var Network = $singleton (Component, {
 
     $defaults: {
@@ -363,33 +394,32 @@ var Network = $singleton (Component, {
 
     interface: () => ({
         onopen: (peer, description, base64) => {
-            log.i ('Base64', description.type,
-                    base64, '(' + base64.length, 'bytes)')
+            log.i ('Base64', description.type, base64, '(' + base64.length, 'bytes)')
             App.submit ('/#' + base64)
         },
         ondata: (peer, event) => {
             var data = JSON.parse (event.data)
-            var from = peer.remoteAddressString
             switch (data.type) {
-                case 'message': App.print ({ html: data.message, from: from }); break
-                default: log (peer, event)
+                case 'message':
+                    App.print ({ html: data.message, from: peer.remoteAddress.string });
+                    break
+                default:
+                    log.ee (peer, event)
             }
         },
         onconnect: peer => { 
-            log.gg ('Connected as', peer.localAddressString,
-                    'to', peer.remoteAddressString)
-            App.print ([
-                'Connected as', peer.localAddressString,
-                'to', peer.remoteAddressString
-            ])
+            log.gg ('Connected as', peer.localAddress.string, 'to', peer.remoteAddress.string)
+            App.print ([ 'Connected as', peer.localAddress.string, 'to', peer.remoteAddress.string ])
+            if (peer.localDescription.type == 'offer')
+                App.submit ('Hello, World!')
         },
         ondisconnect: peer => {
-            log.ee ('Disconnected from', peer.remoteAddressString)
-            App.print ([ 'Disconnected from', peer.remoteAddressString ])
+            log.ee ('Disconnected from', peer.remoteAddress.string)
+            App.print ([ 'Disconnected from', peer.remoteAddress.string ])
         },
     }),
 
-    handshake: function (base64) {
+    peer: function (base64) {
 
         if (!base64) {
             this.peers.push (new Peer (this.interface ()))
@@ -477,9 +507,9 @@ var App = $singleton (Component, {
             this.print (message)
             if (/#([a-zA-Z0-9+/=-]+)/.test (message)) {
                 let [, base64] = message.match (/#([a-zA-Z0-9+/=-]+)/)
-                Network.handshake (base64)
+                Network.peer (base64)
             } else if (firstWord == '/offer')
-                Network.handshake ()
+                Network.peer ()
             else      
                 this.usage ()  
         } else {
