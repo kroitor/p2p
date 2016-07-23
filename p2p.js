@@ -16,7 +16,7 @@
     })
     
     $mixin (Uint8Array, { 
-        hex: $property (function () { 
+        hex: $property (function () {
             return this.reduce ((p, c) => { return (p.hex || p) + c.hex })
         })
     })
@@ -167,8 +167,8 @@ $mixin (RTCSessionDescription, {
             this.fingerprint.split (':').map (x => parseInt (x, 16))))
     }),
 
-    fingerprintFromBase64: function (fingerprintBase64) {
-         return atob (fingerprintBase64)
+    fingerprintFromBase64: function (base64) {
+         return atob (base64)
             .split ('')
             .map (c => c.charCodeAt (0).hex.toUpperCase ())
             .join (':')
@@ -199,7 +199,7 @@ $mixin (RTCSessionDescription, {
 
     fromBase64: function (s) {
 
-        let [ iceUfrag, icePwd, fingerprint, udp, answer ] = s.split ('-')
+        let [ iceUfrag, icePwd, base64, udp, answer ] = s.split ('-')
 
         var address = (new Address ()).fromBase64 (udp)
         
@@ -216,7 +216,7 @@ $mixin (RTCSessionDescription, {
             'a=setup:' + (answer ? 'active' : 'actpass'),
             'a=ice-ufrag:' + iceUfrag,
             'a=ice-pwd:' + icePwd,
-            'a=fingerprint:sha-256 ' + this.fingerprintFromBase64 (fingerprint),
+            'a=fingerprint:sha-256 ' + this.fingerprintFromBase64 (base64),
             [
                 'a=candidate:0',            // foundation 
                 '1',                        // component
@@ -392,40 +392,49 @@ var Network = $singleton (Component, {
         peers: [],
     },
 
-    interface: () => ({
-        onopen: (peer, description, base64) => {
-            log.i ('Base64', description.type, base64, '(' + base64.length, 'bytes)')
-            App.submit ('/#' + base64)
-        },
-        ondata: (peer, event) => {
-            var data = JSON.parse (event.data)
-            switch (data.type) {
-                case 'message':
-                    App.print ({ html: data.message, from: peer.remoteAddress.string });
-                    break
-                default:
-                    log.ee (peer, event)
-            }
-        },
-        onconnect: peer => { 
-            log.gg ('Connected as', peer.localAddress.string, 'to', peer.remoteAddress.string)
-            App.print ([ 'Connected as', peer.localAddress.string, 'to', peer.remoteAddress.string ])
-            if (peer.localDescription.type == 'offer')
-                App.submit ('Hello, World!')
-        },
-        ondisconnect: peer => {
-            log.ee ('Disconnected from', peer.remoteAddress.string)
-            App.print ([ 'Disconnected from', peer.remoteAddress.string ])
-        },
+    interface: $property (function () {
+        return _.pick (this, 'onopen', 'ondata', 'onconnect', 'ondisconnect')
     }),
 
-    peer: function (base64) {
+    onopen: function (peer, description, base64) {
+        log.i ('Base64', description.type, base64, '(' + base64.length, 'bytes)')
+        App.submit ('/#' + base64)
+    },
 
-        if (!base64) {
-            this.peers.push (new Peer (this.interface ()))
-            return this.peers.top
+    ondata: function (peer, event) {
+        try {
+            var request = JSON.parse (event.data)
+            switch (request.type) {
+                case 'message':
+                    App.print ({
+                        html: request.message,
+                        from: peer.remoteAddress.string 
+                    })
+                    break
+                default:
+                    throw new Error ('Unrecognized JSON request')
+            }
+        } catch (error) {
+            log.ee (peer.remoteAddress.string, event.data, error)
         }
+    },
 
+    onconnect: function (peer) {
+        log.gg ('Connected as', peer.localAddress.string,
+                'to', peer.remoteAddress.string)
+        App.print ([ 'Connected as', peer.localAddress.string,
+                     'to', peer.remoteAddress.string ])
+        if (peer.localDescription.type == 'offer')
+            App.submit ('Hello, World!')
+    },
+
+    ondisconnect: function (peer) {
+        log.ee ('Disconnected from', peer.remoteAddress.string)
+        App.print ([ 'Disconnected from', peer.remoteAddress.string ])        
+    },
+
+    bind: function (base64) {
+        
         var decoded = (new RTCSessionDescription ()).fromBase64 (base64)
         log.i ('Base64', decoded.type, base64, '(' + base64.length, 'bytes)')
         
@@ -435,7 +444,12 @@ var Network = $singleton (Component, {
                        .first
                        .answer (decoded)
         
-        this.peers.push (new Peer (_.extend ({ offer: decoded }, this.interface ())))
+        this.peers.push (new Peer (_.extend ({ offer: decoded }, this.interface)))
+        return this.peers.top        
+    },
+
+    peer: function () {
+        this.peers.push (new Peer (this.interface))
         return this.peers.top
     },
 })
@@ -507,7 +521,7 @@ var App = $singleton (Component, {
             this.print (message)
             if (/#([a-zA-Z0-9+/=-]+)/.test (message)) {
                 let [, base64] = message.match (/#([a-zA-Z0-9+/=-]+)/)
-                Network.peer (base64)
+                Network.bind (base64)
             } else if (firstWord == '/offer')
                 Network.peer ()
             else      
