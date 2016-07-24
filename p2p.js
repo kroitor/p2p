@@ -74,8 +74,10 @@ var Address = $component ({
         version: 4,
     },
 
-    init: function () {
-
+    equals: function (address) {
+        return ((this.version == address.version) &&
+                (this.ip == address.ip) && 
+                (this.port == address.port))
     },
 
     ipString: $property (function () {
@@ -84,15 +86,16 @@ var Address = $component ({
 
     string: $property (function () { return this.ipString + ':' + this.port }),
 
-    fromString: function (s) {
+    fromString: $static (function (s) {
+
         var ip = s.split (':')
-        this.port = parseInt (ip.pop ())
-        this.version = (ip.length > 1) ? 6 : 4
-        this.ip = (this.version == 6) ? 
+        var port = parseInt (ip.pop ())
+        var version = (ip.length > 1) ? 6 : 4
+        ip = (this.version == 6) ? 
             inet6_atoh (ip.join (':')) : 
             inet_atoh (ip.first)
-        return this
-    },
+        return new Address ({ version: version, ip: ip, port: port })
+    }),
 
     base64: $property (function () {
 
@@ -112,28 +115,30 @@ var Address = $component ({
             new Uint8Array (dataView.buffer)))
     }),
 
-    fromBase64: function (s) {
-        
+    fromBase64: $static (function (s) {
         var decoded = atob (s)
         $assert (decoded.length > 0)
         var ui = new Uint8Array (decoded.length)
         for (var i = 0; i < decoded.length; i++)
             ui[i] = decoded.charCodeAt (i)
         var dataView = new DataView (ui.buffer)
-        this.version = (decoded.length > 6) ? 6 : 4
-        
-        if (this.version == 6) {
-            this.ip = []
+        var ip, port
+        var version = (decoded.length > 6) ? 6 : 4
+        if (version == 6) {
+            ip = []
             for (i = 0; i < (decoded.length - 2); i += 2)
-                this.ip.push (dataView.getUint16 (i))   
-            this.port = dataView.getUint16 (i)
+                ip.push (dataView.getUint16 (i))   
+            port = dataView.getUint16 (i)
         } else {
-            this.ip = dataView.getUint32 (0)
-            this.port = dataView.getUint16 (4)
+            ip = dataView.getUint32 (0)
+            port = dataView.getUint16 (4)
         }
-
-        return this
-    },
+        return new Address ({
+            ip: ip,
+            port: port,
+            version: version,
+        })
+    }),
 
     isLocal: $property (function () {
         if (this.version == 6)
@@ -167,19 +172,19 @@ $mixin (RTCSessionDescription, {
             this.fingerprint.split (':').map (x => parseInt (x, 16))))
     }),
 
-    fingerprintFromBase64: function (base64) {
+    fingerprintFromBase64: $static (function (base64) {
          return atob (base64)
             .split ('')
             .map (c => c.charCodeAt (0).hex.toUpperCase ())
             .join (':')
-    },
+    }),
 
     bestCandidateAddress: $property (function () {
         return this.sdp.match (/^a=candidate:.+?$/gmi).map (x => {
             let [, priority, ip, port] = 
                 x.match (/^a=candidate:(?:\S+\s){3}(\S+)\s(\S+)\s(\S+)/i)
             return {
-                address: (new Address ()).fromString (ip + ':' + port),
+                address: Address.fromString (ip + ':' + port),
                 priority: parseInt (priority) }
         }).filter (x =>
             ((x.address.version == 4) && x.address.isNotLocal))
@@ -194,14 +199,15 @@ $mixin (RTCSessionDescription, {
             this.icePwd,
             this.fingerprintBase64,
             this.bestCandidateAddress.base64,
+
         ].join ('-')
     }),
 
-    fromBase64: function (s) {
+    fromBase64: $static (function (s) {
 
         let [ iceUfrag, icePwd, base64, udp, answer ] = s.split ('-')
 
-        var address = (new Address ()).fromBase64 (udp)
+        var address = Address.fromBase64 (udp)
         
         var sdp = [
             'v=0',
@@ -235,7 +241,7 @@ $mixin (RTCSessionDescription, {
             type:       answer ? 'answer' : 'offer',
             sdp:        sdp.join ('\r\n') + '\r\n',
         }
-    }, 
+    }), 
 })
 
 //-----------------------------------------------------------------------------
@@ -262,13 +268,8 @@ var Peer = $component ({
 
     onicecandidate: function (event) {
         log (event.candidate ? event.candidate.candidate : event.candidate)
-        if (!event.candidate && this.onopen) {
-            var description = this.localDescription
-            var base64 = [ description.base64 ]
-            if (description.type == 'answer')
-                base64.push (this.remoteAddress.base64)  
-            this.onopen (this, description, base64.join ('-'))
-        }
+        if (!event.candidate && this.onopen)
+            this.onopen (this)
     },
 
     onnegotiationneeded: function () {
@@ -338,10 +339,6 @@ var Peer = $component ({
         return this.connection.remoteDescription 
     }),
 
-    addressMatches: function (base64) {
-        return (base64 == this.localAddress.base64)
-    },
-
     localAddress: $property (function () {
         return this.localDescription.bestCandidateAddress
     }),
@@ -351,7 +348,11 @@ var Peer = $component ({
     }),
     
     send: function (message) {
-        return this.channel.send (message) 
+        return this.channel.send (message)
+    },
+
+    sendJSON: function (object) {
+        return this.send (JSON.stringify (object))  
     },
 
     init: function () {
@@ -367,6 +368,50 @@ var Peer = $component ({
 
 //-----------------------------------------------------------------------------
 
+var KBucket = $component ({
+
+    $defaults: {
+    },
+
+    init: function () {
+
+        this.contacts = []
+    },
+
+    update: function (id) {
+        var index = this.contacts.indexOf (id);
+        if (online) {
+            if (index !== -1) {
+                this.contacts.moveIndexToTail (index);
+            } else {
+                if (this.contacts.length < this.k) {
+                    this.contacts.push (id);
+                } else {
+                    var that = this;
+                    this.kademlia.PING (this.contacts[0], function (res) {
+                        if (res && res.error) {
+                            that.contacts.shift ();
+                            that.contacts.push (id);
+                        }
+                    });
+                }
+                cb (id);
+            }
+        } else {
+            if (index !== -1) {
+                this.contacts.splice(index, 1);
+            }
+        }
+    },
+
+    length: $property (function () {
+
+        this.contacts.length
+    }),
+})
+
+//-----------------------------------------------------------------------------
+
 var RoutingTable = $component ({
 
 })
@@ -375,18 +420,18 @@ var RoutingTable = $component ({
 
 var NodeID = $singleton (Component, {
 
-    init: function () {
-
-    },
-
     random: function (length) {
-        return new Uint8Array (length).map (x => Math.uniformRandom (256))
+        return new Uint8Array (length || 20).map (x => Math.uniformRandom (256))
     },
+
+    sha1: function (length) {
+        return Sha1.hash (this.random (length || 20).hex)
+    }
 })
 
 //-----------------------------------------------------------------------------
 
-var Network = $singleton (Component, {
+var Network = $component ({
 
     $defaults: {
         peers: [],
@@ -396,7 +441,12 @@ var Network = $singleton (Component, {
         return _.pick (this, 'onopen', 'ondata', 'onconnect', 'ondisconnect')
     }),
 
-    onopen: function (peer, description, base64) {
+    onopen: function (peer) {
+        var description = peer.localDescription
+        var base64 = [ description.base64 ]
+        if (description.type == 'answer')
+            base64.push (peer.remoteAddress.base64)
+        base64 = base64.join ('-')
         log.i ('Base64', description.type, base64, '(' + base64.length, 'bytes)')
         App.submit ('/#' + base64)
     },
@@ -404,16 +454,15 @@ var Network = $singleton (Component, {
     ondata: function (peer, event) {
         try {
             var request = JSON.parse (event.data)
-            switch (request.type) {
-                case 'message':
-                    App.print ({
-                        html: request.message,
-                        from: peer.remoteAddress.string 
-                    })
-                    break
-                default:
-                    throw new Error ('Unrecognized JSON request')
-            }
+            if (request.message)
+                App.print ({
+                    html: request.message,
+                    from: peer.remoteAddress.string 
+                })
+            else if (request.id)
+                App.print ('Request:\n' + _.stringify (request))
+            else
+                throw new Error ('Unrecognized JSON request')
         } catch (error) {
             log.ee (peer.remoteAddress.string, event.data, error)
         }
@@ -424,8 +473,28 @@ var Network = $singleton (Component, {
                 'to', peer.remoteAddress.string)
         App.print ([ 'Connected as', peer.localAddress.string,
                      'to', peer.remoteAddress.string ])
-        if (peer.localDescription.type == 'offer')
-            App.submit ('Hello, World!')
+        if (peer.localDescription.type == 'offer') {
+
+            setTimeout (function () {
+
+                var id = NodeID.sha1 ()
+
+                for (var i = 0; i <= 0xfffff; i++) {
+                    var hash = Sha1.hash (id + i)
+                    if (hash.substring (0, 4) == '0000') {
+                        peer.sendJSON ({
+                            id: id + i,
+                            hash: hash,
+                        })   
+                        break;
+                    }  
+                }
+
+                App.print ('Done.')
+                
+            }, 0)
+            
+        }
     },
 
     ondisconnect: function (peer) {
@@ -434,15 +503,17 @@ var Network = $singleton (Component, {
     },
 
     bind: function (base64) {
-        
-        var decoded = (new RTCSessionDescription ()).fromBase64 (base64)
+
+        var decoded = RTCSessionDescription.fromBase64 (base64)
         log.i ('Base64', decoded.type, base64, '(' + base64.length, 'bytes)')
         
-        if (decoded.answer)
-            return this.peers
-                       .filter (peer => peer.addressMatches (decoded.answer))
-                       .first
-                       .answer (decoded)
+        if (decoded.answer) {
+            var address = Address.fromBase64 (decoded.answer)
+            return (this.peers
+                        .filter (peer => peer.localAddress.equals (address))
+                        .first
+                        .answer (decoded))
+        }
         
         this.peers.push (new Peer (_.extend ({ offer: decoded }, this.interface)))
         return this.peers.top        
@@ -451,6 +522,10 @@ var Network = $singleton (Component, {
     peer: function () {
         this.peers.push (new Peer (this.interface))
         return this.peers.top
+    },
+
+    broadcast: function (object) {
+        return this.peers.each (peer => peer.sendJSON (object))
     },
 })
 
@@ -481,6 +556,7 @@ var App = $singleton (Component, {
         this.input.onkeypress = this.onkeypress 
         this.input.focus ()
         this.usage ()
+        this.net = new Network ()
         if (window.location.hash)
             this.submit ('/' + window.location.hash)
         else 
@@ -515,23 +591,20 @@ var App = $singleton (Component, {
         ].join ('\n'))
     },
     
-    submit: function (message) {
-        var firstWord = message.split (' ')[0]
+    submit: function (input) {
+        var firstWord = input.split (' ')[0]
         if (firstWord.length && firstWord[0] == '/') {
-            this.print (message)
-            if (/#([a-zA-Z0-9+/=-]+)/.test (message)) {
-                let [, base64] = message.match (/#([a-zA-Z0-9+/=-]+)/)
-                Network.bind (base64)
+            this.print (input)
+            if (/#([a-zA-Z0-9+/=-]+)/.test (input)) {
+                let [, base64] = input.match (/#([a-zA-Z0-9+/=-]+)/)
+                this.net.bind (base64)
             } else if (firstWord == '/offer')
-                Network.peer ()
+                this.net.peer ()
             else      
                 this.usage ()  
         } else {
-            this.print ({ html: message, from: 'you' })
-            Network.peers.each (peer => peer.send (JSON.stringify ({
-                type: 'message',
-                message: message,
-            })))
+            this.print ({ html: input, from: 'you' })
+            this.net.broadcast ({ message: input })
         }
     },
 })
