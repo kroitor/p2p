@@ -468,12 +468,25 @@ var Peer = $component ({
         },
     },
 
-    onrpc: function (data, event) {
+    onpacket: function (received, event) {
 
-        var id = data.id
-        var received = this.received.find (packet => packet.id == id)
+        var payload = received.chunks.join ('').atob
+
+        try { received.data = JSON.parse (payload) }
+        catch (e) { received.data = payload }
+
+        var sent = this.sent.findWhere ({ id: received.id })
+        if (sent && sent.resolve) 
+            sent.resolve ({ request: received, response: sent })
+        else if (this.ondata)
+            this.ondata (this, received, event)
+    },
+
+    onchunk: function (data, event) {
+
+        var received = this.received.findWhere ({ id: data.id })
         if (!received) {
-            this.received.push ({ id: id, chunks: [] })
+            this.received.push ({ id: data.id, chunks: [] })
             received = this.received.top
         }
 
@@ -486,36 +499,22 @@ var Peer = $component ({
         if (!received.count || (received.count > received.chunks.length))
             return // not all of the chunks are there yet
 
-        var payload = received.chunks.join ('').atob
-
-        try { received.data = JSON.parse (payload) }
-        catch (e) { received.data = payload }
-
-        var sent = this.sent.find (packet => packet.id == id)
-        if (sent && sent.resolve) 
-            sent.resolve ({ request: received, response: sent })
-        else if (this.ondata)
-            this.ondata (this, received, event)
-
-//         setTimeout (this.$ (function () {
-//             this.received.takeAt (packet => packet.id == id)
-//             this.sent.takeAt (packet => packet.id == id)
-//         }), 10000)
+        this.onpacket (received, event)
     },
 
     onmessage: function (event) {
         
-        var data 
         try {
-            data = JSON.parse (event.data)
+            var data = JSON.parse (event.data)
             if (!data.id && this.ondata)
                 return this.ondata (this, data, event)
         } catch (e) {
-            return this.ondata ? 
-                this.ondata (this, event.data, event) : undefined
+            return this.ondata ?
+                this.ondata (this, event.data, event) :
+                    undefined
         }
 
-        this.onrpc (data, event)
+        this.onchunk (data, event)
     },
         
     send: function (data) {
@@ -628,14 +627,6 @@ var RoutingTable = $component ({
 
     init: function () {
 
-        // Initialize with the first bucket on stage -1
-        // this bucket starts to split when it's full
-
-//         this.k        = constants.K;
-//         this.myID     = myID;
-//         this.storage  = storage;
-//         this.kademlia = null;
-
         this.buckets  = {
             '': new KBucket ({
                 k: this.k,
@@ -644,32 +635,6 @@ var RoutingTable = $component ({
                 routingTable: this,
             }),
         }
-    },
-
-    handleNewNode: function (node) {
-        var storage = this.storage
-        var nearKeys = storage.getSimiliarKeys (node, this.$ (function (keys) {
-            keys = Array.isArray (keys) ? keys : []
-            keys.filter (this.$ (function (key) {
-
-                var nodesDistance = util.distance (node, key)
-                // look, if there ARENT exactly K better nodes (better means nearer at the key)
-                var betterNodes = this.getKNearest (constants.K, key).filter (function (id) {
-                    return util.lowerThan (util.distance (id, key), nodesDistance)
-                })
-
-                // if there aren't k better nodes, `node` has the responsibility to save the content
-                if (betterNodes.length < constants.K)
-                    storage
-                        .get (key)
-                        .then (function (value) {
-                            if (value)
-                                this.kademlia
-                                    .STORE (node, key, value)
-//                                     .then (function (success) {}, function (failure) {})
-                        })
-            }))
-        }))
     },
 
     findBucket: function (id) {
@@ -727,45 +692,6 @@ var RoutingTable = $component ({
 
         bucket.update (id)
     },
-
-    getKNearest: function (k, id) {
-
-        var bin = id.atob.bin
-        var bestFittingBuckets =         
-            Object.keys (this.buckets).sort (function (a, b) {
-                return bin.lcp (b) - bin.lcp (a)
-            }).map (this.$ (function (key) { return this.buckets[key] }))
-
-        if (bestFittingBuckets[0].contacts.length === k)
-            return bestFittingBuckets[0].getClosest (id)
-
-        // if the best fitting bucket isnt full, look in other buckets
-        var closest = bestFittingBuckets[0].getClosest (id)
-
-        var numNeeded = k - closest.length
-
-        var bucketIndex = 1
-
-        while (numNeeded > 0 && bucketIndex < bestFittingBuckets.length) {
-            var currentBucket = bestFittingBuckets[bucketIndex]
-            var currentBucketsNodes = currentBucket.getClosest (id)
-
-            closest = (currentBucket.length > numNeeded) ?
-                closest.concat (currentBucketsNodes.slice (0, numNeeded)) :
-                closest.concat (currentBucketsNodes)
-
-            numNeeded = k - closest.length
-            bucketIndex++
-        }
-
-        return closest
-    },
-
-    receivedRPCResponse: function (ids) {
-        Object.keys (ids).forEach (this.$ (function (id) { 
-            this.insertNode (id, ids[id])
-        }))
-    }
 })
 
 //-----------------------------------------------------------------------------
@@ -773,7 +699,8 @@ var RoutingTable = $component ({
 var ID = $singleton (Component, {
 
     random: function (length) {
-        return new Uint8Array (length || 20).map (x => Math.randomUniform (256)).btoa
+        return (new Uint8Array (length || 20)
+            .map (x => Math.randomUniform (256)).btoa)
     },
 
     sha1: function (length) { return this.random (length).hex.sha1 },
@@ -874,7 +801,7 @@ var Node = $component ({
     },
 
     broadcast: function (message) {
-        return this.attached.each (peer => peer.message (message))
+        return this.attached.map (peer => peer.message (message))
     },
 
     ping: function (peer, n) {
@@ -1056,36 +983,15 @@ var App = $singleton (Component, {
                 this.usage ()  
         } else {
             this.print ({ html: input, from: 'you' })
-            this.node.broadcast ({ message: input })
+            this.node.broadcast ({ message: input }).each (x => x.catch (e => { if (_.isTypeOf (TimeoutError, e)) log.ii ('Timeout Test OK') }))
         }
     },
 })
 
 //-----------------------------------------------------------------------------
 
-
 String.prototype.map = function () {
     return Array.prototype.map.apply (this, arguments).join ('')
-}
-
-String.prototype.filter = function () {
-    return Array.prototype.filter.apply (this, arguments).join ('')
-}
-
-String.prototype.xor = function (b) {
-    return this.map (function (a, i) {
-        return a != b[i] ? '1' : '0'
-    })
-}
-
-String.prototype.greaterThan = function (b) {
-    for (var i = 0, l = this.length; i < l; i++) {
-        var thisChar = this.charAt (i)
-        if (thisChar !== b.charAt (i)) {
-            return this.charAt(i) === '1' ? true : false
-        }
-    }
-    return false
 }
 
 String.prototype.lowerThan = function (b) {
@@ -1108,31 +1014,6 @@ var ALPHABET = [
     "w", "x", "y", "z", "0", "1", "2", "3",
     "4", "5", "6", "7", "8", "9", "-", "_",
 ]
-
-function binaryToB64 (n) {
-    var b64String = ''
-    while (n.length > 5) {
-        // take last 6 bits, 2^6 = 64
-        var last6Bits = n.substr (n.length - 6, 6)
-        n = n.substr (0, n.length - 6)
-
-        var decimalDigit = parseInt (last6Bits, 2)
-        b64String = ALPHABET[decimalDigit] + b64String
-    }
-    if (n.length > 0) {
-        var decimalDigit = parseInt (n, 2)
-        b64String = ALPHABET[decimalDigit] + b64String
-    }
-    return b64String
-}
-
-function binaryToDecimal (n) {
-    return parseInt (n, 2)
-}
-
-function b64ToDecimal (n) {
-    return parseInt (b64ToBinary (n), 2)
-}
 
 function b64ToBinary (n) {
 
@@ -1171,11 +1052,6 @@ function b64ToBinary (n) {
     return result.substring (padding, result.length)
 }
 
-function getMostSignificantBits (id, n) {
-    var binary = b64ToBinary (id)
-    return binary.slice (0, n)
-}
-
 var distance = function (a, b) {
 
     var aBin = b64ToBinary (a)
@@ -1184,29 +1060,14 @@ var distance = function (a, b) {
     return aBin.xor (bBin)
 }
 
-/**
-* Sort an array of `ids` by the distance to `id`
-* @param  {Array} array
-* @param  {String} id
-* @param  {Boolean} desc (optional)
-* @return {Array}
-*/
+// Sort an array of `ids` by the distance to `id`
+
 var sortByDistance = function (array, id, descending) {
     descending = !!descending
     if (descending)
         return array.sort ((a, b) => (distance (b, id) - distance (a, id)))
     else
         return array.sort ((a, b) => (distance (a, id) - distance (b, id)))
-}
-
-
-/**
-* Return if the binary string `a` is greater than `b`
-* @param  {String} a
-* @param  {String} b
-*/
-var greaterThan = function (a, b) {
-    return a.greaterThan (b)
 }
 
 var lowerThan = function (a, b) {
