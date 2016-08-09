@@ -782,7 +782,7 @@ var Node = $component ({
                 peer.message ({ type: 'ping' })
                     .then (success => {
                         var elapsed = (performance.now () - t).toFixed (3)
-                        console.log (this.id, 'pong', i++, success.response.id, 'rtt', elapsed, 'ms')
+                        console.log (this.id, '<', peer.id, 'pong', i++, success.response.id, 'rtt', elapsed, 'ms')
                     })
             } else clearInterval (interval)
         }), 1000)
