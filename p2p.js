@@ -701,10 +701,8 @@ var Node = $component ({
         var data = packet.data
         if (data.message)
             App.print ({ html: data.message, from: peer.remote,  })
-        else if (data.type == 'ping') {
-//             log (peer.local, '<', peer.remote, '\nPING', packet.id)
+        else if (data.type == 'ping')
             peer.request ({ type: 'pong' }, packet.id)
-        }
         else if (data.id)
             App.print ({ html: '\n' + _.stringify (data), from: peer.remote, })
     },
