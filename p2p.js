@@ -373,7 +373,7 @@ var Peer = $component ({
 
         id:         undefined,      // remote id
         offer:      undefined,      // SDP offer        
-        mtu:        8192,           // Maximum Transmission Unit
+        mtu:        10,             // Maximum Transmission Unit
         sent:       undefined,      // TX log
         received:   undefined,      // RX log
         name:       'data',         // RTCDataChannel name
@@ -480,29 +480,43 @@ var Peer = $component ({
                 this.ondata (this, event.data, event) : undefined
         }
 
-        var i = this.received.findIndex (packet => packet.id == data.id)
+        var id = data.id
+        var i = this.received.findIndex (packet => packet.id == id)
         if (i == -1) {
             i = this.received.length
-            this.received.push ({ id: data.id, chunks: [] })
+            this.received.push ({ id: id, chunks: [] })
         }
 
         var packet = this.received[i]
-        packet.count = packet.count || data.count
-        packet.chunks[data.i || 0] = data.chunk
 
-        if (!packet.count || (packet.count > packet.chunks.length))
-            return // not all of the chunks are there yet
+        if (!packet.data) {
 
-        var payload = packet.chunks.join ('').atob
-        i = this.sent.findIndex (packet => packet.id == data.id)
-        if ((i != -1) && this.sent[i].resolve) try { 
-            this.sent[i].resolve (JSON.parse (payload))
-        } catch (e) {
-            this.sent[i].resolve (payload)
-        } else if (this.ondata) try {
-            this.ondata (this, JSON.parse (payload), event)
-        } catch (e) {
-            this.ondata (this, payload, event)
+            packet.count = packet.count || data.count
+            packet.chunks[data.i || 0] = data.chunk
+
+            if (!packet.count || (packet.count > packet.chunks.length))
+                return // not all of the chunks are there yet
+
+            var payload = packet.chunks.join ('').atob
+            
+            try { packet.data = JSON.parse (payload) }
+            catch (e) { packet.data = payload }
+
+            var j = this.sent.findIndex (packet => packet.id == id)
+            if ((j != -1) && this.sent[j].resolve) 
+                this.sent[j].resolve ({ request: packet, response: this.sent[j] })
+            else if (this.ondata)
+                this.ondata (this, packet, event)
+
+            setTimeout (this.$ (function () {
+                var received = this.received.takeAt (packet => packet.id == id)
+                if (received)
+                    log.g (this.attachedTo.id, 'removed', received.id, '(' + this.received.length + ')')
+                var sent = this.sent.takeAt (packet => packet.id == id)
+                if (sent)
+                    log.e (this.attachedTo.id, 'removed', sent.id, '(' + this.sent.length + ')')
+                log (log.line)
+            }), 10000)
         }
     },
         
@@ -511,42 +525,42 @@ var Peer = $component ({
         return this.channel.send (data)
     },
 
-    message: function (message) {
+    message: function (message, requestID) {
 
         var timeout
-
-        return new Promise (this.$ (function (resolve, reject) {
+        var p = new Promise (this.$ (function (resolve, reject) {
 
             var data = (typeof message == 'string') ? 
                 message : JSON.stringify (message)
-                
+
             var chunks = data.btoa.chop (this.mtu)
-            var id = ID.random ().btoa
+            var id = requestID || ID.random ().btoa
 
             // send first chunk
-            this.send ({
-                chunk: chunks.first,
-                count: chunks.length,
-                id:    id,
-            })
+            this.send ({ id: id, count: chunks.length, chunk: chunks.first })
 
             // send each other chunk
             for (var i = 1; i < chunks.length; i++)
-                this.send ({ id: id, chunk: chunks[i], i: i })
+                this.send ({ id: id, i: i, chunk: chunks[i] })
 
-            this.sent.push ({ id: id, chunks: chunks, resolve: resolve, reject: reject })
+            this.sent.push ({ resolve: resolve, chunks: chunks, id: id })
+        }))
 
-            timeout = setTimeout (this.$ (function () {
-                var i = this.sent.findIndex (packet => packet.id == id)
-                if (i !== -1)
-                    reject (this.sent.splice (i, 1))
-            }), 30000) // 30 sec timeout
+        return requestID ? p : p.timeout (30000)
+    },
 
-        })).then (function (success) {
-
-            clearTimeout (timeout)
-            return success
-        })
+    ping: function (n) {
+        var i = 0
+        var interval = setInterval (this.$ (function () {
+            if (i < n) {
+                var t = performance.now ()
+                this.message ({ type: 'ping' })
+                    .then ((success) => {
+                        var elapsed = (performance.now () - t).toFixed (3)
+                        console.log (this.attachedTo.id, 'pong', i++, success.response.id, 'rtt', elapsed, 'ms')
+                    })
+            } else clearInterval (interval)
+        }), 1000)
     },
 
     init: function () {
@@ -809,9 +823,12 @@ var Node = $component ({
         App.submit ('/#' + base64)
     },
 
-    ondata: function (peer, data, event) {
+    ondata: function (peer, packet, event) {
+        var data = packet.data
         if (data.message)
             App.print ({ html: data.message, from: peer.string,  })
+        else if (data.type == 'ping')
+            peer.message ({ type: 'pong' }, packet.id)
         else if (data.id)
             App.print ({ html: '\n' + _.stringify (data), from: peer.string, })
     },
@@ -838,9 +855,8 @@ var Node = $component ({
             'as', this.id, '@', peer.localAddress.string,
             'to', peer.id, '@', peer.remoteAddress.string ])
 
-        if (peer.localDescription.type == 'offer') {
-            peer.message ({ type: 'message', message: 'hi' })
-        }
+        if (peer.localDescription.type == 'offer')
+            peer.ping (5)
     },
 
     ondisconnect: function (peer) {
@@ -877,7 +893,7 @@ var Node = $component ({
     },
 
     broadcast: function (message) {
-        return this.attached.each (peer => peer.send (message))
+        return this.attached.each (peer => peer.message (message))
     },
 
     lookupRequest: function (id) {
