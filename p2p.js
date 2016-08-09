@@ -468,6 +468,41 @@ var Peer = $component ({
         },
     },
 
+    onrpc: function (data, event) {
+
+        var id = data.id
+        var received = this.received.find (packet => packet.id == id)
+        if (!received) {
+            this.received.push ({ id: id, chunks: [] })
+            received = this.received.top
+        }
+
+        if (received.data)
+            return // this packet is processed already
+
+        received.count = received.count || data.count
+        received.chunks[data.i || 0] = data.chunk
+
+        if (!received.count || (received.count > received.chunks.length))
+            return // not all of the chunks are there yet
+
+        var payload = received.chunks.join ('').atob
+
+        try { received.data = JSON.parse (payload) }
+        catch (e) { received.data = payload }
+
+        var sent = this.sent.find (packet => packet.id == id)
+        if (sent && sent.resolve) 
+            sent.resolve ({ request: received, response: sent })
+        else if (this.ondata)
+            this.ondata (this, received, event)
+
+//         setTimeout (this.$ (function () {
+//             this.received.takeAt (packet => packet.id == id)
+//             this.sent.takeAt (packet => packet.id == id)
+//         }), 10000)
+    },
+
     onmessage: function (event) {
         
         var data 
@@ -476,52 +511,16 @@ var Peer = $component ({
             if (!data.id && this.ondata)
                 return this.ondata (this, data, event)
         } catch (e) {
-            return this.ondata ?
+            return this.ondata ? 
                 this.ondata (this, event.data, event) : undefined
         }
 
-        var id = data.id
-        var i = this.received.findIndex (packet => packet.id == id)
-        if (i == -1) {
-            i = this.received.length
-            this.received.push ({ id: id, chunks: [] })
-        }
-
-        var packet = this.received[i]
-
-        if (!packet.data) {
-
-            packet.count = packet.count || data.count
-            packet.chunks[data.i || 0] = data.chunk
-
-            if (!packet.count || (packet.count > packet.chunks.length))
-                return // not all of the chunks are there yet
-
-            var payload = packet.chunks.join ('').atob
-            
-            try { packet.data = JSON.parse (payload) }
-            catch (e) { packet.data = payload }
-
-            var j = this.sent.findIndex (packet => packet.id == id)
-            if ((j != -1) && this.sent[j].resolve) 
-                this.sent[j].resolve ({ request: packet, response: this.sent[j] })
-            else if (this.ondata)
-                this.ondata (this, packet, event)
-
-            setTimeout (this.$ (function () {
-                var received = this.received.takeAt (packet => packet.id == id)
-                if (received)
-                    log.g (this.attachedTo.id, 'removed', received.id, '(' + this.received.length + ')')
-                var sent = this.sent.takeAt (packet => packet.id == id)
-                if (sent)
-                    log.e (this.attachedTo.id, 'removed', sent.id, '(' + this.sent.length + ')')
-                log (log.line)
-            }), 10000)
-        }
+        this.onrpc (data, event)
     },
         
     send: function (data) {
-        var data = (typeof data == 'string') ? data : JSON.stringify (data)
+        var data = (typeof data == 'string') ?
+            data : JSON.stringify (data)
         return this.channel.send (data)
     },
 
@@ -534,7 +533,7 @@ var Peer = $component ({
                 message : JSON.stringify (message)
 
             var chunks = data.btoa.chop (this.mtu)
-            var id = requestID || ID.random ().btoa
+            var id = requestID || ID.random ()
 
             // send first chunk
             this.send ({ id: id, count: chunks.length, chunk: chunks.first })
@@ -547,20 +546,6 @@ var Peer = $component ({
         }))
 
         return requestID ? p : p.timeout (30000)
-    },
-
-    ping: function (n) {
-        var i = 0
-        var interval = setInterval (this.$ (function () {
-            if (i < n) {
-                var t = performance.now ()
-                this.message ({ type: 'ping' })
-                    .then ((success) => {
-                        var elapsed = (performance.now () - t).toFixed (3)
-                        console.log (this.attachedTo.id, 'pong', i++, success.response.id, 'rtt', elapsed, 'ms')
-                    })
-            } else clearInterval (interval)
-        }), 1000)
     },
 
     init: function () {
@@ -788,7 +773,7 @@ var RoutingTable = $component ({
 var ID = $singleton (Component, {
 
     random: function (length) {
-        return new Uint8Array (length || 20).map (x => Math.randomUniform (256))
+        return new Uint8Array (length || 20).map (x => Math.randomUniform (256)).btoa
     },
 
     sha1: function (length) { return this.random (length).hex.sha1 },
@@ -806,7 +791,7 @@ var Node = $component ({
     },
 
     init: function () {
-        this.id = this.id || ID.random ().btoa
+        this.id = this.id || ID.random ()
         this.routingTable = new RoutingTable ({ k: this.k })
     },
 
@@ -834,19 +819,12 @@ var Node = $component ({
     },
 
     onconnect: function (peer) {
-
         if (!this.online) {
-
-            // join the net
-
+//             // join the net
 //             this.routingTable.insert (peer.id)
 //             this.lookupRequest (this.id)
 //                 .then (function () { })
-
-        } else {
-
-            // handle new peer
-        }
+        } else { /* handle new peer */ }
 
         log (this.id, '@', peer.localAddress.string, 'connected to',
             peer.id, '@', peer.remoteAddress.string)
@@ -855,8 +833,11 @@ var Node = $component ({
             'as', this.id, '@', peer.localAddress.string,
             'to', peer.id, '@', peer.remoteAddress.string ])
 
-        if (peer.localDescription.type == 'offer')
-            peer.ping (5)
+        this.ping (peer)
+        if (peer.offer)
+            peer.message ({ type: 'message', message: 'hello' })
+                .then (function (success) { log ('Reply:', success ) })
+                .catch (function (failure) { if (_.isTypeOf (TimeoutError, failure)) { log ('Timeout OK') }})
     },
 
     ondisconnect: function (peer) {
@@ -894,6 +875,20 @@ var Node = $component ({
 
     broadcast: function (message) {
         return this.attached.each (peer => peer.message (message))
+    },
+
+    ping: function (peer, n) {
+        var i = 0
+        var interval = setInterval (this.$ (function () {
+            if (i < (n || 1)) {
+                var t = performance.now ()
+                peer.message ({ type: 'ping' })
+                    .then (success => {
+                        var elapsed = (performance.now () - t).toFixed (3)
+                        console.log (this.id, 'pong', i++, success.response.id, 'rtt', elapsed, 'ms')
+                    })
+            } else clearInterval (interval)
+        }), 1000)
     },
 
     lookupRequest: function (id) {
@@ -1055,6 +1050,8 @@ var App = $singleton (Component, {
                 this.net.bind (input.match (/#([a-zA-Z0-9+/=:-]+)/)[1])
             else if (firstWord == '/offer')
                 this.node.peer ()
+            else if (firstWord == '/ping')
+                this.node.attached.each (peer => this.node.ping (peer))
             else      
                 this.usage ()  
         } else {
