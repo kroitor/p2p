@@ -4,17 +4,19 @@
 
 ;(() => {
 
+    // uniformly-scattered random integer in range [ 0; max ) 
     Math.randomUniform = function (max) { 
         return Math.floor (Math.random () * max)
     }
 
+    // array conversion
     $mixin (Array, {
         moveBack: function (i) { this.push (this.splice (i, 1)); return this },
         string: $property (function () { return String.fromCharCode.apply (null, this) }),
     })
-    
+
+    // number conversion
     $mixin (Number, {
-        
         $property: {
             hex: function ()  { return this.toString (16).padl ('00') },
             bin: function ()  { return this.toString ( 2).padl ('00000000') },
@@ -22,6 +24,7 @@
         },       
     })
 
+    // string conversion
     $mixin (String, {
 
         padl: function (padding) {
@@ -76,6 +79,7 @@
         },
     })
 
+    // TypedArray / ArrayBuffer conversion 
     var typedArrayMixin = {
 
         $property: {
@@ -121,35 +125,32 @@
         string: $property (function () { return new Uint8Array (this).string }),
     })
 
+    // Networking Utility ·····················································
+
+    // adapter
     $global.RTCPeerConnection =  $global.RTCPeerConnection ||
                                  $global.webkitRTCPeerConnection
 
+    // endianness
     $platform.isBigEndian = (() => 
         (new DataView (new Int16Array ([256]).buffer).getUint16 (0) === 256)) ()
 
     $platform.isLittleEndian = !$platform.isBigEndian
 
+    // host to network/network to host short/long byte order conversion
     if ($platform.isLittleEndian) {
-        
         $global.htons = $global.ntohs = (x =>
             new DataView (new Uint16Array ([x]).buffer).getUint16 (0))
         $global.htonl = $global.ntohl = (x =>
             new DataView (new Uint32Array ([x]).buffer).getUint32 (0))
-
     } else {
-
-        $global.htons =
-        $global.ntohs =
-        $global.htonl =
-        $global.ntohl = (x => x)
+        $global.htons = $global.ntohs = $global.htonl = $global.ntohl = (x => x)
     }
 
-    $global.inet6_atoh = (ip => {
-        return _.flatten (ip.split (':').map ((v, k, l) =>
-            v.length ? 
-                parseInt (v, 16) :
-                _(9 - l.length).times (() => 0)))
-                })
+    // inet_* functions for string to IP / IP to string conversion
+    $global.inet6_atoh = (ip => 
+        (_.flatten (ip.split (':') .map ((v, k, l) => v.length ? 
+            parseInt (v, 16) : _(9 - l.length).times (() => 0)))))
 
     $global.inet6_htoa = (ip =>
         ip.map (x => x.hex).join (':').replace (/(:0)+/, ':'))
@@ -163,7 +164,6 @@
          ((ip >>> 16) & 0xff),
          ((ip >>>  8) & 0xff),
          ((ip >>>  0) & 0xff)].map (x => x.toString (10)).join ('.'))
-
 }) ()
 
 //-----------------------------------------------------------------------------
@@ -272,7 +272,7 @@ $mixin (RTCSessionDescription, {
                     .map (x => parseInt (x, 16))).btoa
         },  
 
-        bestCandidateAddress: function () {
+        bestAddress: function () {
             return this.sdp.match (/^a=candidate:.+?$/gmi).map (x => {
                 let [, priority, ip, port] = 
                     x.match (/^a=candidate:(?:\S+\s){3}(\S+)\s(\S+)\s(\S+)/i)
@@ -289,7 +289,7 @@ $mixin (RTCSessionDescription, {
                 this.iceUfrag,
                 this.icePwd,
                 this.fingerprintBase64,
-                this.bestCandidateAddress.base64,
+                this.bestAddress.base64,
 
             ].join (RTCSessionDescription.separator)
         },
@@ -345,24 +345,6 @@ $mixin (RTCSessionDescription, {
             }
         }, 
     },
-})
-
-//-----------------------------------------------------------------------------
-// This is for reference (temporary)
-
-var PeerEvents = $trait ({
-
-    beforeInit: function () {
-
-        [ 'onopen', 'ondata', 'onconnect', 'ondisconnect' ].forEach (name => {
-
-            const method = _.bindable (this[name] || (() => {}))
-
-            this[name] = method.onAfter ((... args) => { 
-                this.parent[name] (this, ... args) 
-            })
-        })
-    }
 })
 
 //-----------------------------------------------------------------------------
@@ -447,25 +429,13 @@ var Peer = $component ({
 
     $property: {
 
-        string: function () {
-            return this.id + '@' + this.remoteAddress.string  
-        },
+        string: function () { return this.id + '@' + this.remoteAddress.string },
 
-        localDescription: function () {
-            return this.link.localDescription 
-        },
-
-        remoteDescription: function () {
-            return this.link.remoteDescription 
-        },
-
-        localAddress: function () {
-            return this.localDescription.bestCandidateAddress
-        },
-
-        remoteAddress: function () {
-            return this.remoteDescription.bestCandidateAddress
-        },
+        localDescription:  function () { return this.link.localDescription },
+        remoteDescription: function () { return this.link.remoteDescription },
+        
+        localAddress:  function () { return this.localDescription.bestAddress },
+        remoteAddress: function () { return this.remoteDescription.bestAddress },
     },
 
     onpacket: function (received, event) {
@@ -994,16 +964,6 @@ String.prototype.map = function () {
     return Array.prototype.map.apply (this, arguments).join ('')
 }
 
-String.prototype.lowerThan = function (b) {
-    for (var i = 0, l = this.length; i < l; i++) {
-        var thisChar = this.charAt (i)
-        if (thisChar !== b.charAt (i)) {
-            return this.charAt (i) === '0' ? true : false
-        }
-    }
-    return false
-}
-
 var ALPHABET = [
     "A", "B", "C", "D", "E", "F", "G", "H",
     "I", "J", "K", "L", "M", "N", "O", "P",
@@ -1053,10 +1013,8 @@ function b64ToBinary (n) {
 }
 
 var distance = function (a, b) {
-
     var aBin = b64ToBinary (a)
     bBin = b64ToBinary (b)
-
     return aBin.xor (bBin)
 }
 
@@ -1068,10 +1026,6 @@ var sortByDistance = function (array, id, descending) {
         return array.sort ((a, b) => (distance (b, id) - distance (a, id)))
     else
         return array.sort ((a, b) => (distance (a, id) - distance (b, id)))
-}
-
-var lowerThan = function (a, b) {
-    return a.lowerThan (b)
 }
 
 //-----------------------------------------------------------------------------
