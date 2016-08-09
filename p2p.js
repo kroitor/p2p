@@ -429,11 +429,12 @@ var Peer = $component ({
 
     $property: {
 
-        string: function () { return this.id + '@' + this.remoteAddress.string },
+        remote: function () { return this.id + this.remoteAddress.string },
+        local:  function () { return ((this.attachedTo ? this.attachedTo.id : '') + this.localAddress.string) },
 
-        localDescription:  function () { return this.link.localDescription },
+        localDescription:  function () { return this.link.localDescription }, 
         remoteDescription: function () { return this.link.remoteDescription },
-        
+
         localAddress:  function () { return this.localDescription.bestAddress },
         remoteAddress: function () { return this.remoteDescription.bestAddress },
     },
@@ -493,10 +494,10 @@ var Peer = $component ({
         return this.channel.send (data)
     },
 
-    message: function (message, requestID) {
+    request: function (message, requestID) {
 
         var timeout
-        var p = new Promise (this.$ (function (resolve, reject) {
+        return new Promise (this.$ (function (resolve, reject) {
 
             var data = (typeof message == 'string') ? 
                 message : JSON.stringify (message)
@@ -513,8 +514,6 @@ var Peer = $component ({
 
             this.sent.push ({ resolve: resolve, chunks: chunks, id: id })
         }))
-
-        return requestID ? p : p.timeout (30000)
     },
 
     init: function () {
@@ -535,51 +534,46 @@ var Peer = $component ({
 var KBucket = $component ({
 
     $defaults: {
-        contacts:       undefined,
-        k:              undefined,
-        prefix:         undefined,
         routingTable:   undefined,
+        k:        undefined,
+        contacts: undefined,
+        prefix:   '',
     },
 
     init: function () {
-        this.contacts = []
-        this.prefix = 0xffff // FIXME
+        this.contacts = this.contacts || []
+        this.prefix = this.prefix || ''
     },
 
     length: $property (function () { return this.contacts.length }),
 
-    update: function (id) {
-        
+    update: function (id) {        
         var index = this.contacts.indexOf (id)
-
         if (index !== -1)
             this.contacts.moveIndexToTail (index)
-        else {
-            if (this.contacts.length < this.k)
-                this.contacts.push (id)
-            else {
-                var that = this;
-                this.kademlia.PING (this.contacts[0], function (res) {
-                    if (res && res.error) {
-                        that.contacts.shift ()
-                        that.contacts.push (id)
-                    }
-                })
-            }
-            cb (id)
-        }
+//         else {
+//             if (this.contacts.length < this.k)            
+//                 this.contacts.push (id) 
+//             else {
+//                 var that = this;
+//                 this.kademlia.PING (this.contacts[0], function (res) {
+//                     if (res && res.error) {
+//                         that.contacts.shift ()
+//                         that.contacts.push (id)
+//                     }
+//                 })
+//             }
+//             cb (id)
+//         }
     },
 
     // return ids sorted by distance to input id
-    getClosest: function (id) {
-        return util.sortByDistance (this.contacts, id)
-    },
+    getClosest: function (id) { return util.sortByDistance (this.contacts, id) },
 
     refresh: function () {
-        return
-            this.kademlia
-                .node_lookup (this.contacts.random ())
-                .then (function (results) { })
+//         return (this.kademlia
+//              .node_lookup (this.contacts.random ())
+//              .then (function (results) { }))
     },
 })
 
@@ -619,23 +613,21 @@ var RoutingTable = $component ({
 
     splitBucket: function (bucket) {
 
-        $assert (false, 'splitting bucket')
         var prefix = this.id.atob.bin.lcp (bucket.prefix)
-        // TODO: detect special case in blue ...
         if (prefix.length === bucket.prefix.length) {
             if (Object.keys (this.buckets).length < constants.HASH_SPACE) {
-
                 var nodes = bucket.contacts
                 var prefix = bucket.prefix
-
                 delete this.buckets[prefix]
-
-                this.buckets[prefix + '0'] = new KBucket (this.k, prefix + '0', this.kademlia, this)
-                this.buckets[prefix + '1'] = new KBucket (this.k, prefix + '1', this.kademlia, this)
-
-                this.insert (nodes)
-
-                return true
+                [ '0', '1' ].each (digit => { 
+                    this.buckets[prefix + digit] = new KBucket ({
+                        id: id,
+                        k: this.k,
+                        prefix: prefix + digit,
+                        routingTable: this,
+                    })
+                })
+                return this.insert (nodes)
             }
         }
         return false
@@ -660,7 +652,7 @@ var RoutingTable = $component ({
             }
         }
 
-        bucket.update (id)
+        return bucket.update (id)
     },
 })
 
@@ -708,11 +700,13 @@ var Node = $component ({
     ondata: function (peer, packet, event) {
         var data = packet.data
         if (data.message)
-            App.print ({ html: data.message, from: peer.string,  })
-        else if (data.type == 'ping')
-            peer.message ({ type: 'pong' }, packet.id)
+            App.print ({ html: data.message, from: peer.remote,  })
+        else if (data.type == 'ping') {
+//             log (peer.local, '<', peer.remote, '\nPING', packet.id)
+            peer.request ({ type: 'pong' }, packet.id)
+        }
         else if (data.id)
-            App.print ({ html: '\n' + _.stringify (data), from: peer.string, })
+            App.print ({ html: '\n' + _.stringify (data), from: peer.remote, })
     },
 
     onconnect: function (peer) {
@@ -723,26 +717,22 @@ var Node = $component ({
 //                 .then (function () { })
         } else { /* handle new peer */ }
 
-        log (this.id, '@', peer.localAddress.string, 'connected to',
-            peer.id, '@', peer.remoteAddress.string)
-
-        App.print ([ 'Connected',
-            'as', this.id, '@', peer.localAddress.string,
-            'to', peer.id, '@', peer.remoteAddress.string ])
+        log (peer.local, 'connected to', peer.remote)
+        App.print ([ 'Connected as', peer.local, 'to', peer.remote ])
 
         this.ping (peer)
         if (peer.offer)
-            peer.message ({ type: 'message', message: 'hello' })
+            peer.request ({ type: 'message', message: 'hello' })
                 .then (function (success) { log ('Reply:', success ) })
-                .catch (function (failure) { if (_.isTypeOf (TimeoutError, failure)) { log ('Timeout OK') }})
+                .catch (function (failure) {
+                    if (_.isTypeOf (TimeoutError, failure)) log ('Timeout OK')
+                })
     },
 
     ondisconnect: function (peer) {
         
-        log (this.id, '@', peer.localAddress.string, 'disconnected from',
-            peer.id, '@', peer.remoteAddress.string)
-
-        App.print ([ 'Disconnected from', peer.remoteAddress.string ])        
+        log (peer.local, 'disconnected from', peer.remote)
+        App.print ([ peer.local, 'disconnected from', peer.remote ])
     },
 
     find: function (address) {
@@ -771,7 +761,7 @@ var Node = $component ({
     },
 
     broadcast: function (message) {
-        return this.attached.map (peer => peer.message (message))
+        return this.attached.map (peer => peer.request (message))
     },
 
     ping: function (peer, n) {
@@ -779,10 +769,11 @@ var Node = $component ({
         var interval = setInterval (this.$ (function () {
             if (i < (n || 1)) {
                 var t = performance.now ()
-                peer.message ({ type: 'ping' })
+                peer.request ({ type: 'ping' })
+                    .timeout (30000)
                     .then (success => {
                         var elapsed = (performance.now () - t).toFixed (3)
-                        console.log (this.id, '<', peer.id, 'pong', i++, success.response.id, 'rtt', elapsed, 'ms')
+                        log (peer.local, '<', peer.remote, '\nPONG', i++, success.response.id, 'rtt', elapsed, 'ms')
                     })
             } else clearInterval (interval)
         }), 1000)
