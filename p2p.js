@@ -859,6 +859,7 @@ var Node = $component ({
         var interval = setInterval (this.$ (function () {
             if (i < (n || 1)) {
                 var t = performance.now ()
+                log (peer.local, '>', peer.remote, 'PING')
                 peer.ping ()
                     .timeout (30000)
                     .then (success => {
