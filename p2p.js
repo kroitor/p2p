@@ -11,7 +11,6 @@
 
     // array conversion
     $mixin (Array, {
-        moveBack: function (i) { this.push (this.splice (i, 1)); return this },
         string: $property (function () { return String.fromCharCode.apply (null, this) }),
     })
 
@@ -349,13 +348,19 @@ $mixin (RTCSessionDescription, {
 
 //-----------------------------------------------------------------------------
 
+var Packet = $component ({
+
+})
+
+//-----------------------------------------------------------------------------
+
 var Peer = $component ({
 
     $defaults: {
 
         id:         undefined,      // remote id
         offer:      undefined,      // SDP offer        
-        mtu:        10,             // Maximum Transmission Unit
+        mtu:        2,             // Maximum Transmission Unit
         sent:       undefined,      // TX log
         received:   undefined,      // RX log
         name:       'data',         // RTCDataChannel name
@@ -423,14 +428,17 @@ var Peer = $component ({
 
     ondatachannel: function (event) {
         this.channel = event.channel
-        this.channel.onopen = this.oncreate
+        this.channel.onopen  = this.oncreate
         this.channel.onclose = this.onclose
     },
 
     $property: {
-
+        
         remote: function () { return this.id + this.remoteAddress.string },
-        local:  function () { return ((this.attachedTo ? this.attachedTo.id : '') + this.localAddress.string) },
+        local:  function () { 
+            return (this.attachedTo ?  this.attachedTo.id : '') + 
+                this.localAddress.string
+        },
 
         localDescription:  function () { return this.link.localDescription }, 
         remoteDescription: function () { return this.link.remoteDescription },
@@ -503,7 +511,7 @@ var Peer = $component ({
                 message : JSON.stringify (message)
 
             var chunks = data.btoa.chop (this.mtu)
-            var id = requestID || ID.random ()
+            var id = requestID || Kademlia.random ()
 
             // send first chunk
             this.send ({ id: id, count: chunks.length, chunk: chunks.first })
@@ -515,6 +523,13 @@ var Peer = $component ({
             this.sent.push ({ resolve: resolve, chunks: chunks, id: id })
         }))
     },
+
+    relay: function (data, id) { 
+        return this.request ({ type: 'relay', data: data, to: id })
+    },
+
+    ping: function ()   { return this.request ({ type: 'ping' }) },
+    pong: function (id) { return this.request ({ type: 'pong' }, id) },
 
     init: function () {
         this.sent = this.sent || []
@@ -534,10 +549,10 @@ var Peer = $component ({
 var KBucket = $component ({
 
     $defaults: {
-        routingTable:   undefined,
-        k:        undefined,
+        routingTable: undefined,
+        k: undefined,
         contacts: undefined,
-        prefix:   '',
+        prefix: '',
     },
 
     init: function () {
@@ -545,30 +560,34 @@ var KBucket = $component ({
         this.prefix = this.prefix || ''
     },
 
-    length: $property (function () { return this.contacts.length }),
+    $property: {
 
-    update: function (id) {        
-        var index = this.contacts.indexOf (id)
-        if (index !== -1)
-            this.contacts.moveIndexToTail (index)
-//         else {
-//             if (this.contacts.length < this.k)            
-//                 this.contacts.push (id) 
-//             else {
-//                 var that = this;
-//                 this.kademlia.PING (this.contacts[0], function (res) {
-//                     if (res && res.error) {
-//                         that.contacts.shift ()
-//                         that.contacts.push (id)
-//                     }
-//                 })
-//             }
-//             cb (id)
-//         }
+        space:  function ()   { return this.k - this.contacts.length },
+        length: function ()   { return this.contacts.length },        
+        
     },
 
-    // return ids sorted by distance to input id
-    getClosest: function (id) { return util.sortByDistance (this.contacts, id) },
+    sortedByDistanceTo: function (id) {
+        return Kademlia.sortByDistance (this.contacts, id)
+    },
+
+    update: function (id) {
+
+        var i = this.contacts.indexOf (id)
+
+        if (i !== -1)
+            return this.contacts.push (this.contacts.splice (i, 1))
+
+        if (this.space > 0)
+            return this.contacts.push (id)
+
+//         this.kademlia.PING (this.contacts[0], this.$ (function (res) {
+//             if (res && res.error) {
+//                 that.contacts.shift ()
+//                 that.contacts.push (id)
+//             }
+//         })
+    },
 
     refresh: function () {
 //         return (this.kademlia
@@ -582,15 +601,12 @@ var KBucket = $component ({
 var RoutingTable = $component ({
 
     $defaults: {
-
-        alpha:  3,
-        k:      20,
-        B:      160,
-        
+        a: 3,
+        k: 20,
+        B: 160,        
     },
 
     init: function () {
-
         this.buckets  = {
             '': new KBucket ({
                 k: this.k,
@@ -601,15 +617,16 @@ var RoutingTable = $component ({
         }
     },
 
-    findBucket: function (id) {
-
+    bucketsByPrefix: function (id) {
         var bin = id.atob.bin
-        var i = Object.keys (this.buckets).sort ((a, b) =>
-            bin.lcp (b.atob.bin).length -
-                bin.lcp (a.atob.bin).length).first
+        return (Object
+            .keys (this.buckets)
+            .sort ((a, b) =>
+                bin.lcp (b.atob.bin).length - bin.lcp (a.atob.bin).length)
+            .map (key => this.buckets[key]))
+    }, 
 
-        return this.buckets[i]
-    },
+    findBucket: function (id) { return this.bucketsByPrefix (id).first },
 
     splitBucket: function (bucket) {
 
@@ -633,18 +650,27 @@ var RoutingTable = $component ({
         return false
     },
 
+    sortedByDistanceTo: function (id) {
+        return this.bucketsByPrefix (id).reduce ((a, b) => {
+            if (a.length >= this.k) return a
+            return [... a, ... b.sortedByDistanceTo (id)]
+        }, [])
+    },
+
+
     insert: function (id) {
 
-        if (Array.isArray (id)) return id.each (i => this.insert (i))
+        if (Array.isArray (id))
+            return id.each (i => this.insert (i))
 
-        if (id === this.id) return
-
-        var bucket = this.findBucket (id)
-
+        if (id === this.id)
+            return
+            
+        var bucket = this.findBucket (id)        
         if (bucket.contacts.length === this.k) {
             var ownBucket = this.findBucket (this.id)
             if (bucket === ownBucket || ownBucket.length === 1) {
-                var couldSplit = true
+                var couldSplit = true    
                 while (bucket.length === this.k && couldSplit) {
                     couldSplit = this.splitBucket (bucket)
                     bucket = this.findBucket (id)
@@ -658,168 +684,27 @@ var RoutingTable = $component ({
 
 //-----------------------------------------------------------------------------
 
-var ID = $singleton (Component, {
+var Kademlia = $singleton (Component, {
+
+    $property: {
+        a: 3,
+        k: 20,
+        B: 160,
+    },
 
     random: function (length) {
         return (new Uint8Array (length || 20)
             .map (x => Math.randomUniform (256)).btoa)
     },
 
+    sortByDistance: function (array, id) {
+        return array.sort ((a, b) => 
+            (Kademlia.distance (a, id) - Kademlia.distance (b, id)))
+    },
+
+    distance: function (a, b) { return a.atob.uint8.xor (b.atob.uint8).bin },
+
     sha1: function (length) { return this.random (length).hex.sha1 },
-})
-
-//-----------------------------------------------------------------------------
-
-var Node = $component ({
-
-    $defaults: {
-        id:             undefined,
-        routingTable:   undefined,
-        k:              20,
-        B:              160,
-    },
-
-    init: function () {
-        this.id = this.id || ID.random ()
-        this.routingTable = new RoutingTable ({ k: this.k })
-    },
-
-    interface: $property (function () {
-        return _.pick (this, 'onopen', 'ondata', 'onconnect', 'ondisconnect')
-    }),
-
-    onopen: function (peer) {
-        var config = peer.localDescription
-        var base64 = [ this.id, config.base64 ]
-        if (config.type == 'answer')
-            base64.push (peer.remoteAddress.base64)
-        base64 = base64.join (':')
-        App.submit ('/#' + base64)
-    },
-
-    ondata: function (peer, packet, event) {
-        var data = packet.data
-        if (data.message)
-            App.print ({ html: data.message, from: peer.remote,  })
-        else if (data.type == 'ping')
-            peer.request ({ type: 'pong' }, packet.id)
-        else if (data.id)
-            App.print ({ html: '\n' + _.stringify (data), from: peer.remote, })
-    },
-
-    onconnect: function (peer) {
-        if (!this.online) {
-//             // join the net
-//             this.routingTable.insert (peer.id)
-//             this.lookupRequest (this.id)
-//                 .then (function () { })
-        } else { /* handle new peer */ }
-
-        log (peer.local, 'connected to', peer.remote)
-        App.print ([ 'Connected as', peer.local, 'to', peer.remote ])
-
-        this.ping (peer)
-        if (peer.offer)
-            peer.request ({ type: 'message', message: 'hello' })
-                .then (function (success) { log ('Reply:', success ) })
-                .catch (function (failure) {
-                    if (_.isTypeOf (TimeoutError, failure)) log ('Timeout OK')
-                })
-    },
-
-    ondisconnect: function (peer) {
-        
-        log (peer.local, 'disconnected from', peer.remote)
-        App.print ([ peer.local, 'disconnected from', peer.remote ])
-    },
-
-    find: function (address) {
-        return this.attached.filter (peer =>
-            peer.localAddress.equals (address)).first
-    },
-
-    answer: function (config) {
-        var peer = this.find (config.localAddress)
-        return peer ? peer.answer (config) : peer
-    },
-
-    bind: function (config) {
-
-        if (typeof config == 'string')
-            config = RTCSessionDescription.fromBase64 (config)
-
-        if (config.answer)
-            return this.answer (config)
-
-        return this.peer ({ offer: config }).attachTo (this)
-    },
-
-    peer: function (config) {
-        return this.attach (new Peer (_.extended (config, this.interface)))
-    },
-
-    broadcast: function (message) {
-        return this.attached.map (peer => peer.request (message))
-    },
-
-    ping: function (peer, n) {
-        var i = 0
-        var interval = setInterval (this.$ (function () {
-            if (i < (n || 1)) {
-                var t = performance.now ()
-                peer.request ({ type: 'ping' })
-                    .timeout (30000)
-                    .then (success => {
-                        var elapsed = (performance.now () - t).toFixed (3)
-                        log (peer.local, '<', peer.remote, '\nPONG', i++, success.response.id, 'rtt', elapsed, 'ms')
-                    })
-            } else clearInterval (interval)
-        }), 1000)
-    },
-
-    lookupRequest: function (id) {
-
-        return new Promise (function (resolve, reject) {
-
-            resolve (success)
-            reject (error)
-
-        }).then (function (success) {
-        
-        }).catch (function (error) {
-
-        })
-    },
-})
-
-//-----------------------------------------------------------------------------
-
-var Net = $component ({
-
-    $defaults: {
-        k: 4,
-        B: 160,
-    },
-
-    node: function (config) {
-        return (new Node (config).attachTo (this))
-    },
-
-    bind: function (config) {
-
-        if (typeof config == 'string')
-            config = RTCSessionDescription.fromBase64 (config)
-
-        if (config.answer)
-            for (var i = 0; i < this.attached.length; i++)
-                if (this.attached[i].bind (config))
-                    return
-
-        if (!config.answer)
-            return this.node ().peer ({ offer: config })
-
-        return undefined
-    },
 })
 
 //-----------------------------------------------------------------------------
@@ -858,6 +743,232 @@ var Net = $component ({
 //        |         ·                   ·                   ·
 //· · · · <---------------------- AD connection ----------------------> · · · ·
 //                  ·                   ·                   ·
+//-----------------------------------------------------------------------------
+
+var Node = $component ({
+
+    $defaults: {
+
+        routingTable: undefined,
+
+        id: undefined,
+        B:  Kademlia.B,
+        k:  Kademlia.k,
+        a:  Kademlia.a,
+        
+    },
+
+    init: function () {
+        this.id = this.id || Kademlia.random ()
+        this.routingTable = new RoutingTable ({ k: this.k })
+    },
+
+    interface: $property (function () {
+        return _.pick (this, 'onopen', 'ondata', 'onconnect', 'ondisconnect')
+    }),
+
+    localSDP: function (peer) {
+        var config = peer.localDescription
+        var base64 = [ this.id, config.base64 ]
+        if (config.type == 'answer')
+            base64.push (peer.remoteAddress.base64)
+        return base64.join (':')
+    },
+
+    onopen: function (peer) { App.submit ('/#' + this.localSDP (peer)) },
+    onping: function (peer, packet, event) { peer.pong (packet.id) },
+    onfindNode: function (peer, packet, event) {
+
+        
+    },
+
+    ondata: function (peer, packet, event) {
+        var data = packet.data
+        if (data.message)
+            App.print ({ html: data.message, from: peer.remote,  })
+        else if (data.type == 'ping' && this.onping)
+            this.onping (peer, packet, event)
+        else if (data.type == 'findNode' && this.onfindNode)
+            this.onfindNode (peer, packet, event)
+        else if (data.id)
+            App.print ({ html: '\n' + _.stringify (data), from: peer.remote, })
+    },
+
+    onconnect: function (peer) {
+
+        this.peers[peer.id] = peer
+
+        this.routingTable.insert (peer.id)
+
+        this.nodeLookupRequest (this.id)
+//             .then (success => {})
+//             .catch (failure => {})
+
+        log (peer.local, 'connected to', peer.remote)
+        App.print ([ 'Connected as', peer.local, 'to', peer.remote ])
+
+        this.ping (peer)
+        if (peer.offer)
+            peer.request ({ type: 'message', message: 'hello' })
+                .then  (success => log ('Reply:', success ))
+                .catch (failure => log ('Timeout OK'))
+    },
+
+    ondisconnect: function (peer) {
+        
+        log (peer.local, 'disconnected from', peer.remote)
+        App.print ([ peer.local, 'disconnected from', peer.remote ])
+    },
+
+    find: function (address) {
+        return this.attached.filter (peer =>
+            peer.localAddress.equals (address)).first
+    },
+
+    answer: function (config) {
+        var peer = this.find (config.localAddress)
+        return peer ? peer.answer (config) : peer
+    },
+
+    bind: function (config) {
+
+        if (typeof config == 'string')
+            config = RTCSessionDescription.fromBase64 (config)
+
+        if (config.answer)
+            return this.answer (config)
+
+        return this.peer ({ offer: config }).attachTo (this)
+    },
+
+    peer: function (config) {
+        return this.attach (new Peer (_.extended (this.interface, config)))
+    },
+
+    broadcast: function (message) {
+        return this.attached.map (peer => peer.request (message))
+    },
+
+    ping: function (peer, n) {
+        var i = 0
+        var interval = setInterval (this.$ (function () {
+            if (i < (n || 1)) {
+                var t = performance.now ()
+                peer.ping ()
+                    .timeout (30000)
+                    .then (success => {
+                        var elapsed = (performance.now () - t).toFixed (3)
+                        log (peer.local, '<', peer.remote, 'PONG', i++, success.response.id, 'rtt', elapsed, 'ms')
+                    })
+            } else clearInterval (interval)
+        }), 1000)
+    },
+
+    connect: function (config) {
+        return new Promise ((resolve, reject) => {
+            this.peer ({
+                onconnect: peer => { resolve (peer) },
+                onopen: peer => {
+                    peer.relay ({ type: 'offer', offer: this.localSDP (peer) }, peer.id)
+                        .timeout (30000)
+                        .then (success => { this.bind (success.response.answer) })
+                        .catch (failure => reject (failure))
+                },          
+            })
+        })
+    },
+
+    nodeLookupRequest: function (key) {
+
+        return new Promise ((resolve, reject) => {
+
+            var shortlist = this.routingTable.sortedByDistanceTo (key)
+
+            var closest = shortlist.first
+
+            var alpha = shortlist.map (id => this.peers[id].findNode (key).timeout (30000))
+                                 .map (Promise.reflect)
+
+            Promise.all (alpha).then (results => {
+
+
+            })
+
+            var alpha = shortlist.slice (this.a)
+
+            Promise.all (shortlist.map (id => this.peers[id].findNode (key)).map (Promise.reflect)).
+            shortlist.each (id => {
+                this.peers[id]
+                    .findNode (key)
+                    .then (contacts => { })
+                    .catch (error => { })
+
+                var peer = this.attached.filter (p => p.id == id).first
+                peer.findNode (key)
+                    .then (contacts => { })
+                    .catch (error => { })
+            })
+            
+            function lookup (peer) {
+                
+                this.transport
+                    .send (peer)
+                    .timeout (constants.LOOKUP_TIMEOUT)
+                    .payload ({ rpc: RPCS.NODE_LOOKUP_REQ, key: key })
+                    .then ((success, rtt) => {
+                        this.handleRoutingTable (RPCS.NODE_LOOKUP_RES, peer, success, null)
+                        resolve (succes)
+                    }).catch (error => {
+                        this.handleRoutingTable (RPCS.NODE_LOOKUP_RES, peer, null, error)
+                        if (peers.length > 0)
+                            lookup.call (this, peers.shift (), peers.length)
+                        else
+                            reject (error)
+                    })
+            }
+
+            if (peers.length > 0)
+                lookup.call (this, peers.shift ())
+            else
+                reject (new Error ('No peers.'))
+        })
+    },
+
+    lookupRequest: function (id) {
+
+    },
+})
+
+//-----------------------------------------------------------------------------
+
+var Net = $component ({
+
+    $defaults: {
+        k: 4,
+        B: 160,
+    },
+
+    node: function (config) {
+        return (new Node (config).attachTo (this))
+    },
+
+    bind: function (config) {
+
+        if (typeof config == 'string')
+            config = RTCSessionDescription.fromBase64 (config)
+
+        if (config.answer)
+            for (var i = 0; i < this.attached.length; i++)
+                if (this.attached[i].bind (config))
+                    return
+
+        if (!config.answer)
+            return this.node ().peer ({ offer: config })
+
+        return undefined
+    },
+})
+
 //-----------------------------------------------------------------------------
 
 var App = $singleton (Component, {
@@ -913,8 +1024,8 @@ var App = $singleton (Component, {
             message = { html: message }
         else if (Array.isArray (message))
             message = { html: message.join (' ') }
-        var element = N ('message').appendTo (this.output)
-                                .add (this.format (message))
+        var element = 
+            N ('message').appendTo (this.output).add (this.format (message))
         this.output.scrollTop = this.output.scrollHeight    
         return element
     },
@@ -946,75 +1057,5 @@ var App = $singleton (Component, {
         }
     },
 })
-
-//-----------------------------------------------------------------------------
-
-String.prototype.map = function () {
-    return Array.prototype.map.apply (this, arguments).join ('')
-}
-
-var ALPHABET = [
-    "A", "B", "C", "D", "E", "F", "G", "H",
-    "I", "J", "K", "L", "M", "N", "O", "P",
-    "Q", "R", "S", "T", "U", "V", "W", "X",
-    "Y", "Z", "a", "b", "c", "d", "e", "f",
-    "g", "h", "i", "j", "k", "l", "m", "n",
-    "o", "p", "q", "r", "s", "t", "u", "v",
-    "w", "x", "y", "z", "0", "1", "2", "3",
-    "4", "5", "6", "7", "8", "9", "-", "_",
-]
-
-function b64ToBinary (n) {
-
-    function prefixWithZeroes (digitString) {
-        if (digitString.length === 6) {
-            return digitString
-        } else if (digitString.length < 6) {
-            var restZeroes = [
-                '',
-                '0',
-                '00',
-                '000',
-                '0000',
-                '00000'
-            ]
-            var rest = 6 - digitString.length
-            return restZeroes[rest] + digitString
-        }
-    }
-
-    if (typeof n !== 'string') {
-        debugger
-        throw new TypeError ('the input argument `n` is not a string.')
-    }
-
-    var result = n.map (function (digit) {
-        return prefixWithZeroes (ALPHABET.indexOf (digit).toString (2))
-    })
-
-    // IMPORTANT!!!
-    // If the ID Space is eg. 8, then 4 leading zeroes are generated!
-    // If its 160, 2 leading zeroes are generated.
-
-    var padding = 6 - (constants.HASH_SPACE % 6)
-
-    return result.substring (padding, result.length)
-}
-
-var distance = function (a, b) {
-    var aBin = b64ToBinary (a)
-    bBin = b64ToBinary (b)
-    return aBin.xor (bBin)
-}
-
-// Sort an array of `ids` by the distance to `id`
-
-var sortByDistance = function (array, id, descending) {
-    descending = !!descending
-    if (descending)
-        return array.sort ((a, b) => (distance (b, id) - distance (a, id)))
-    else
-        return array.sort ((a, b) => (distance (a, id) - distance (b, id)))
-}
 
 //-----------------------------------------------------------------------------
