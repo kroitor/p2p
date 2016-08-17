@@ -750,6 +750,7 @@ var Node = $component ({
     $defaults: {
 
         routingTable: undefined,
+        peers: {},
 
         id: undefined,
         B:  Kademlia.B,
