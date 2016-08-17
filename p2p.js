@@ -530,6 +530,10 @@ var Peer = $component ({
 
     ping: function ()   { return this.request ({ type: 'ping' }) },
     pong: function (id) { return this.request ({ type: 'pong' }, id) },
+    
+    findNode: function (key) {
+        return this.request ({ type: 'findNode', key: key })
+    },
 
     init: function () {
         this.sent = this.sent || []
@@ -801,7 +805,7 @@ var Node = $component ({
 
         this.routingTable.insert (peer.id)
 
-        this.nodeLookupRequest (this.id)
+        this.iterativeFindNode (this.id)
 //             .then (success => {})
 //             .catch (failure => {})
 
@@ -879,7 +883,7 @@ var Node = $component ({
         })
     },
 
-    nodeLookupRequest: function (key) {
+    iterativeFindNode: function (key) {
 
         return new Promise ((resolve, reject) => {
 
@@ -887,57 +891,60 @@ var Node = $component ({
 
             var closest = shortlist.first
 
-            var alpha = shortlist.map (id => this.peers[id].findNode (key).timeout (30000))
+            var alpha = shortlist.map (id => this.peers[id].findNode (key).timeout (3000))
                                  .map (Promise.reflect)
 
             Promise.all (alpha).then (results => {
 
-
+                results.map ((result, i) => {
+                    var id = shortlist[i]
+                    var peer = this.peers[id]
+                    if (result instanceof TimeoutError) {
+                        log ('Node', i, peer.local, peer.remote, 'timed out')
+                    }
+                })
             })
 
-            var alpha = shortlist.slice (this.a)
+//             var alpha = shortlist.slice (this.a)
 
-            Promise.all (shortlist.map (id => this.peers[id].findNode (key)).map (Promise.reflect)).
-            shortlist.each (id => {
-                this.peers[id]
-                    .findNode (key)
-                    .then (contacts => { })
-                    .catch (error => { })
+//             Promise.all (shortlist.map (id => this.peers[id].findNode (key)).map (Promise.reflect)).
+//             shortlist.each (id => {
+//                 this.peers[id]
+//                     .findNode (key)
+//                     .then (contacts => { })
+//                     .catch (error => { })
 
-                var peer = this.attached.filter (p => p.id == id).first
-                peer.findNode (key)
-                    .then (contacts => { })
-                    .catch (error => { })
-            })
+//                 var peer = this.attached.filter (p => p.id == id).first
+//                 peer.findNode (key)
+//                     .then (contacts => { })
+//                     .catch (error => { })
+//             })
             
-            function lookup (peer) {
+//             function lookup (peer) {
                 
-                this.transport
-                    .send (peer)
-                    .timeout (constants.LOOKUP_TIMEOUT)
-                    .payload ({ rpc: RPCS.NODE_LOOKUP_REQ, key: key })
-                    .then ((success, rtt) => {
-                        this.handleRoutingTable (RPCS.NODE_LOOKUP_RES, peer, success, null)
-                        resolve (succes)
-                    }).catch (error => {
-                        this.handleRoutingTable (RPCS.NODE_LOOKUP_RES, peer, null, error)
-                        if (peers.length > 0)
-                            lookup.call (this, peers.shift (), peers.length)
-                        else
-                            reject (error)
-                    })
-            }
+//                 this.transport
+//                     .send (peer)
+//                     .timeout (constants.LOOKUP_TIMEOUT)
+//                     .payload ({ rpc: RPCS.NODE_LOOKUP_REQ, key: key })
+//                     .then ((success, rtt) => {
+//                         this.handleRoutingTable (RPCS.NODE_LOOKUP_RES, peer, success, null)
+//                         resolve (succes)
+//                     }).catch (error => {
+//                         this.handleRoutingTable (RPCS.NODE_LOOKUP_RES, peer, null, error)
+//                         if (peers.length > 0)
+//                             lookup.call (this, peers.shift (), peers.length)
+//                         else
+//                             reject (error)
+//                     })
+//             }
 
-            if (peers.length > 0)
-                lookup.call (this, peers.shift ())
-            else
-                reject (new Error ('No peers.'))
+//             if (peers.length > 0)
+//                 lookup.call (this, peers.shift ())
+//             else
+//                 reject (new Error ('No peers.'))
         })
     },
 
-    lookupRequest: function (id) {
-
-    },
 })
 
 //-----------------------------------------------------------------------------
