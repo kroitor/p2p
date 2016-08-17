@@ -211,7 +211,7 @@ var Address = $component ({
                     (this.ip >= 0xc0a80000 && this.ip <= 0xc0a8ffff))   // 192.168.x.x
         },
 
-        isNotLocal: function () { return !this.isLocal },
+        isNotLocal: function () { return !this.isLocal () },
     },
 
     $static: {
@@ -1057,5 +1057,3 @@ var App = $singleton (Component, {
         }
     },
 })
-
-//-----------------------------------------------------------------------------
