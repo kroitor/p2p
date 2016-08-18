@@ -456,7 +456,7 @@ var Peer = $component ({
 
         var sent = this.sent.findWhere ({ id: received.id })
         if (sent && sent.resolve) 
-            sent.resolve ({ request: received, response: sent })
+            sent.resolve ({ request: sent, response: received })
         else if (this.ondata)
             this.ondata (this, received, event)
     },
@@ -782,9 +782,20 @@ var Node = $component ({
 
     onopen: function (peer) { App.submit ('/#' + this.localSDP (peer)) },
     onping: function (peer, packet, event) { peer.pong (packet.id) },
-    onfindNode: function (peer, packet, event) {
+    onfindnode: function (peer, packet, event) {
 
-        
+        var shortlist = 
+            this.routingTable
+                .sortedByDistanceTo (packet.data.key)
+                .without (peer.id)
+
+        log (peer.local, '<', peer.remote, packet.id, packet.data.type, packet.data.key)
+        peer.request ({ type: packet.data.type, contacts: shortlist }, packet.id)
+        log (peer.local, '>', peer.remote, packet.id, packet.data.type, packet.data.key, shortlist)
+
+//         peer.request ({ type: 'findNode', contacts: this.routingTable.sortedByDistanceT}, packet.id)
+//         return this.request ({ type: 'findNode '}, id)
+//         log (peer.local, '<', peer.remote, packet.data)
     },
 
     ondata: function (peer, packet, event) {
@@ -793,8 +804,8 @@ var Node = $component ({
             App.print ({ html: data.message, from: peer.remote,  })
         else if (data.type == 'ping' && this.onping)
             this.onping (peer, packet, event)
-        else if (data.type == 'findNode' && this.onfindNode)
-            this.onfindNode (peer, packet, event)
+        else if (data.type == 'findNode' && this.onfindnode)
+            this.onfindnode (peer, packet, event)
         else if (data.id)
             App.print ({ html: '\n' + _.stringify (data), from: peer.remote, })
     },
@@ -858,13 +869,13 @@ var Node = $component ({
         var i = 0
         var interval = setInterval (this.$ (function () {
             if (i < (n || 1)) {
+                log (peer.local, '>', peer.remote, 'ping')
                 var t = performance.now ()
-                log (peer.local, '>', peer.remote, 'PING')
                 peer.ping ()
                     .timeout (30000)
                     .then (success => {
                         var elapsed = (performance.now () - t).toFixed (3)
-                        log (peer.local, '<', peer.remote, 'PONG', i++, success.response.id, 'rtt', elapsed, 'ms')
+                        log (peer.local, '<', peer.remote, success.response.data.type, i++, success.request.id, 'rtt', elapsed, 'ms')
                     })
             } else clearInterval (interval)
         }), 1000)
@@ -892,12 +903,30 @@ var Node = $component ({
 
             var closest = shortlist.first
 
-            var alpha = shortlist.map (id => this.peers[id].findNode (key).timeout (3000).reflect)
+//             var alpha = shortlist.map (id => this.peers[id].findNode (key).timeout (3000).reflect)
 
             __.map (shortlist, id => {
+
                 var peer = this.peers[id]
                 return peer.findNode (key).timeout (3000).reflect
-            }).log
+                
+            }).then (results => {
+
+                results.map ((result, i) => {
+
+                    if (typeof result == 'TimeoutError') {
+
+                    } else if (result instanceof Error) {
+
+                    } else {
+
+                        var peer = this.peers[shortlist[i]]
+                        var data = result.response.data
+                        log (peer.local, '<', peer.remote, result.response.id, data.type, shortlist[i], data.contacts)
+
+                    }
+                })
+            })
             
         })
     },
