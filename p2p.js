@@ -783,19 +783,14 @@ var Node = $component ({
     onopen: function (peer) { App.submit ('/#' + this.localSDP (peer)) },
     onping: function (peer, packet, event) { peer.pong (packet.id) },
     onfindnode: function (peer, packet, event) {
-
         var shortlist = 
             this.routingTable
                 .sortedByDistanceTo (packet.data.key)
                 .without (peer.id)
-
-        log (peer.local, '<', peer.remote, packet.id, packet.data.type, packet.data.key)
-        peer.request ({ type: packet.data.type, contacts: shortlist }, packet.id)
-        log (peer.local, '>', peer.remote, packet.id, packet.data.type, packet.data.key, shortlist)
-
-//         peer.request ({ type: 'findNode', contacts: this.routingTable.sortedByDistanceT}, packet.id)
-//         return this.request ({ type: 'findNode '}, id)
-//         log (peer.local, '<', peer.remote, packet.data)
+        peer.request ({
+            type: packet.data.type,
+            contacts: shortlist,
+        }, packet.id)
     },
 
     ondata: function (peer, packet, event) {
@@ -813,21 +808,20 @@ var Node = $component ({
     onconnect: function (peer) {
 
         this.peers[peer.id] = peer
-
         this.routingTable.insert (peer.id)
-
-        this.iterativeFindNode (this.id)
 //             .then (success => {})
 //             .catch (failure => {})
 
-        log (peer.local, 'connected to', peer.remote)
+        log (peer.local, 'connected to', peer.remote, peer.offer ? true : false)
         App.print ([ 'Connected as', peer.local, 'to', peer.remote ])
 
-        this.ping (peer)
-        if (peer.offer)
+        if (peer.offer) {
+            this.iterativeFindNode (this.id)
+            this.ping (peer)
             peer.request ({ type: 'message', message: 'hello' })
                 .then  (success => log ('Reply:', success ))
                 .catch (failure => log ('Timeout OK'))
+        }
     },
 
     ondisconnect: function (peer) {
@@ -868,14 +862,14 @@ var Node = $component ({
     ping: function (peer, n) {
         var i = 0
         var interval = setInterval (this.$ (function () {
-            if (i < (n || 1)) {
-                log (peer.local, '>', peer.remote, 'ping')
+            if (i++ < (n || 1)) {
+//                 log (peer.local, '>', peer.remote, 'ping')
                 var t = performance.now ()
                 peer.ping ()
                     .timeout (30000)
                     .then (success => {
                         var elapsed = (performance.now () - t).toFixed (3)
-                        log (peer.local, '<', peer.remote, success.response.data.type, i++, success.request.id, 'rtt', elapsed, 'ms')
+                        log (peer.local, '<', peer.remote, success.request.id, success.response.data.type, elapsed)
                     })
             } else clearInterval (interval)
         }), 1000)
@@ -938,12 +932,17 @@ var Node = $component ({
 var Net = $component ({
 
     $defaults: {
+
+        nodes: {},
+
         k: 4,
         B: 160,
     },
 
     node: function (config) {
-        return (new Node (config).attachTo (this))
+        var node = new Node (config)
+        this.nodes[node.id] = node
+        return node.attachTo (this)
     },
 
     bind: function (config) {
