@@ -812,7 +812,7 @@ var Node = $component ({
 //             .then (success => {})
 //             .catch (failure => {})
 
-        log (peer.local, 'connected to', peer.remote, peer.offer ? true : false)
+        log (peer.local, 'connected to', peer.remote)
         App.print ([ 'Connected as', peer.local, 'to', peer.remote ])
 
         if (peer.offer) {
