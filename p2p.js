@@ -939,38 +939,33 @@ var Node = $component ({
 
     iterativeFindNode: function (key) {
 
-        return new Promise ((resolve, reject) => {
+        var shortlist = this.routingTable.sortedByDistanceTo (key)
+        var closest = shortlist.first
+        var contacted = []
+        var peers = {}
 
-            var shortlist = this.routingTable.sortedByDistanceTo (key)
-            var closest = shortlist.first
-            var contacted = []
-            var peers = {}
+        var howMany = Math.min (Kademlia.a, shortlist.length)
+        var ids = _(howMany).times (() => shortlist.shift ())
+        ids.each (id => contacted.push (id))
 
-            var amount = Math.min (Kademlia.a, shortlist.length)
-            var ids = _.times (amount, () => shortlist.shift ())
-            ids.each (id => contacted.push (id))
-
-            __.map (ids, id => 
-                this.iterateFindNode (id, peers[id], key)
-                    .then (result => {
-                        result.response.data.contacts
-                            .without (... contacted)
-                            .each (contact => {
-                                peers[contact] = 
-                                    _.uniq ([... peers[contact] || [], id])
-                                shortlist.push (contact)
-                            })
-                        return result
-                    }).reflect
-            ).then (results => {
-                log.g ('Shortlist:', shortlist)
-                log.g ('Peers:', peers)
-                log.g ('Contacted:', contacted)
-                log.i (results.reduce ((a, b) => [
-                    ... a, 
-                    ... b.response.data.contacts
-                ], []))
-            })
+        __.map (ids, id => 
+            this.iterateFindNode (id, peers[id], key)
+                .then (result => {
+                    result.response.data.contacts
+                        .without (... contacted)
+                        .each (contact => {
+                            peers[contact] = 
+                                _.uniq ([... peers[contact] || [], id])
+                            shortlist.push (contact)
+                        })
+                    return result
+                }).reflect
+        ).then (results => {
+            log.g ('Shortlist:', shortlist)
+            log.g ('Peers:', peers)
+            log.g ('Contacted:', contacted)
+            log.i (results.reduce ((a, b) => 
+                [ ... a, ... b.response.data.contacts ], []))
         })
     },
 
