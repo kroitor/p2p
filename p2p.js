@@ -504,8 +504,7 @@ var Peer = $component ({
 
     request: function (message, requestID) {
 
-        var timeout
-        return new Promise (this.$ (function (resolve, reject) {
+        return new Promise ((resolve, reject) => {
 
             var data = (typeof message == 'string') ? 
                 message : JSON.stringify (message)
@@ -521,7 +520,7 @@ var Peer = $component ({
                 this.send ({ id: id, i: i, chunk: chunks[i] })
 
             this.sent.push ({ resolve: resolve, chunks: chunks, id: id })
-        }))
+        })
     },
 
     relay: function (data, id) { 
@@ -712,6 +711,12 @@ var Kademlia = $singleton (Component, {
 })
 
 //-----------------------------------------------------------------------------
+
+class UnreachableError extends Error {
+    constructor () { super ('unreachable') }
+}   
+
+//-----------------------------------------------------------------------------
 // WebRTC Kademlia Connection Schema
 //-----------------------------------------------------------------------------
 //        A         ·         B         ·         C         ·         D        
@@ -817,7 +822,7 @@ var Node = $component ({
 
         if (peer.offer) {
             this.iterativeFindNode (this.id)
-            this.ping (peer)
+//             this.ping (peer)
             peer.request ({ type: 'message', message: 'hello' })
                 .then  (success => log ('Reply:', success ))
                 .catch (failure => log ('Timeout OK'))
@@ -889,38 +894,113 @@ var Node = $component ({
         })
     },
 
+    findPeer: function (id, roots) {
+
+        return new Promise ((resolve, reject) => {
+
+            if (this.peers[id])
+                return resolve (this.peers[id])
+
+            if (!(roots && roots.length))
+                return reject (new UnreachableError ())
+
+            this.peer ({
+                onopen: peer => {
+                    var offer = { offer: this.localSDP (peer) }
+                    Promise.race (
+                        roots.filter (id => this.peers[id])
+                             .map (root => 
+                                this.peers[root]
+                                    .relay (offer, id)
+                                    .timeout (30000)
+                                    .then (success => {
+                                        if (!success.response.data.answer) throw success
+                                        return success
+                                    })
+                                    .catch (failure => { log.e (failure) }))
+                     ).timeout (30000)
+                      .then (success => { peer.answer (success.response.data.answer) })
+                      .catch (failure => { reject (failure) })
+                },
+                onconnect: peer => {
+                    this.peers[peer.id] = peer
+                    this.routingTable.insert (peer.id)
+                    resolve (peer)
+                },
+            })
+        })
+    },
+
+    iterateFindNode: function (id, roots, key) {
+
+        return new Promise ((resolve, reject) => {
+
+            this.findPeer (id, roots)
+                .timeout (30000)
+                .then (peer => 
+                    peer.findNode (key)
+                        .timeout (30000)
+                        .then (result => {
+                            var data = result.response.data
+                            log (peer.local, '<', peer.remote, result.response.id, data.type, key, data.contacts)
+                            resolve ({ peer: peer, contacts: data.contacts })
+                        })
+                ).catch (failure => reject (failure))
+        })
+    },
+
+
     iterativeFindNode: function (key) {
 
         return new Promise ((resolve, reject) => {
 
             var shortlist = this.routingTable.sortedByDistanceTo (key)
-
             var closest = shortlist.first
+            var contacted = []
+            var roots = {}
+
+            var id = shortlist.shift ()
+            contacted.push (id)
+
+            this.iterateFindNode (id, roots[id], key)
+                .then (value => {
+                    var contacts = value.contacts
+                    var peer = value.peer
+                    contacts.without (... contacted).each (contact => {
+                        roots[contact] = _.uniq ([... roots[contact] || [], peer.id])
+                        shortlist.push (contact)
+                    })
+
+                    // sort shortlist
+                    log (shortlist, roots)
+
+                })
+            
 
 //             var alpha = shortlist.map (id => this.peers[id].findNode (key).timeout (3000).reflect)
 
-            __.map (shortlist, id => {
+//             __.map (shortlist, id => {
 
-                var peer = this.peers[id]
-                return peer.findNode (key).timeout (3000).reflect
+//                 var peer = this.peers[id]
+//                 return peer.findNode (key).timeout (3000).reflect
                 
-            }).then (results => {
+//             }).then (results => {
 
-                results.map ((result, i) => {
+//                 results.map ((result, i) => {
 
-                    if (typeof result == 'TimeoutError') {
+//                     if (typeof result == 'TimeoutError') {
 
-                    } else if (result instanceof Error) {
+//                     } else if (result instanceof Error) {
 
-                    } else {
+//                     } else {
 
-                        var peer = this.peers[shortlist[i]]
-                        var data = result.response.data
-                        log (peer.local, '<', peer.remote, result.response.id, data.type, shortlist[i], data.contacts)
+//                         var peer = this.peers[shortlist[i]]
+//                         var data = result.response.data
+//                         log (peer.local, '<', peer.remote, result.response.id, data.type, shortlist[i], data.contacts)
 
-                    }
-                })
-            })
+//                     }
+//                 })
+//             })
             
         })
     },
@@ -1000,8 +1080,10 @@ var App = $singleton (Component, {
 
         if (window.location.hash)
             this.submit ('/' + window.location.hash)
-        else 
+        else {
             this.submit ('/offer')
+            this.submit ('/offer')
+        }
     },
 
     format: function (message) {
