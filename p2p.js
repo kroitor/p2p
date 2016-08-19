@@ -880,37 +880,23 @@ var Node = $component ({
         }), 1000)
     },
 
-    connect: function (config) {
-        return new Promise ((resolve, reject) => {
-            this.peer ({
-                onconnect: peer => { resolve (peer) },
-                onopen: peer => {
-                    peer.relay ({ type: 'offer', offer: this.localSDP (peer) }, peer.id)
-                        .timeout (30000)
-                        .then (success => { this.bind (success.response.answer) })
-                        .catch (failure => reject (failure))
-                },          
-            })
-        })
-    },
-
-    findPeer: function (id, roots) {
+    resolvePeer: function (id, peers) {
 
         return new Promise ((resolve, reject) => {
 
             if (this.peers[id])
                 return resolve (this.peers[id])
 
-            if (!(roots && roots.length))
+            if (!(peers && peers.length))
                 return reject (new UnreachableError ())
 
             this.peer ({
                 onopen: peer => {
                     var offer = { offer: this.localSDP (peer) }
                     Promise.race (
-                        roots.filter (id => this.peers[id])
-                             .map (root => 
-                                this.peers[root]
+                        peers.filter (id => this.peers[id])
+                             .map (peer => 
+                                this.peers[peer]
                                     .relay (offer, id)
                                     .timeout (30000)
                                     .then (success => {
@@ -920,7 +906,7 @@ var Node = $component ({
                                     .catch (failure => { log.e (failure) }))
                      ).timeout (30000)
                       .then (success => { peer.answer (success.response.data.answer) })
-                      .catch (failure => { reject (failure) })
+                      .catch (reject)
                 },
                 onconnect: peer => {
                     this.peers[peer.id] = peer
@@ -935,20 +921,19 @@ var Node = $component ({
 
         return new Promise ((resolve, reject) => {
 
-            this.findPeer (id, roots)
+            this.resolvePeer (id, roots)
                 .timeout (30000)
-                .then (peer => 
-                    peer.findNode (key)
+                .then (peer => {
+                    return peer.findNode (key)
                         .timeout (30000)
                         .then (result => {
                             var data = result.response.data
                             log (peer.local, '<', peer.remote, result.response.id, data.type, key, data.contacts)
-                            resolve ({ peer: peer, contacts: data.contacts })
+                            resolve (result)
                         })
-                ).catch (failure => reject (failure))
+                }).catch (reject)
         })
     },
-
 
     iterativeFindNode: function (key) {
 
@@ -959,49 +944,24 @@ var Node = $component ({
             var contacted = []
             var roots = {}
 
-            var id = shortlist.shift ()
-            contacted.push (id)
+            var amount = Math.min (Kademlia.a, shortlist.length)
+            var ids = _.times (amount, () => shortlist.shift ())
+            ids.each (id => contacted.push (id))
 
-            this.iterateFindNode (id, roots[id], key)
-                .then (value => {
-                    var contacts = value.contacts
-                    var peer = value.peer
-                    contacts.without (... contacted).each (contact => {
-                        roots[contact] = _.uniq ([... roots[contact] || [], peer.id])
-                        shortlist.push (contact)
-                    })
-
-                    // sort shortlist
-                    log (shortlist, roots)
-
-                })
-            
-
-//             var alpha = shortlist.map (id => this.peers[id].findNode (key).timeout (3000).reflect)
-
-//             __.map (shortlist, id => {
-
-//                 var peer = this.peers[id]
-//                 return peer.findNode (key).timeout (3000).reflect
-                
-//             }).then (results => {
-
-//                 results.map ((result, i) => {
-
-//                     if (typeof result == 'TimeoutError') {
-
-//                     } else if (result instanceof Error) {
-
-//                     } else {
-
-//                         var peer = this.peers[shortlist[i]]
-//                         var data = result.response.data
-//                         log (peer.local, '<', peer.remote, result.response.id, data.type, shortlist[i], data.contacts)
-
-//                     }
-//                 })
-//             })
-            
+            __.map (ids, id => 
+                this.iterateFindNode (id, roots[id], key)
+                    .then (result => {
+                        result.response.data.contacts
+                            .without (... contacted)
+                            .each (contact => {
+                                roots[contact] = _.uniq ([... roots[contact] || [], id])
+                                shortlist.push (contact)
+                            })
+                        return result
+                    }).reflect
+            ).then (results => {
+                log.g (shortlist, roots)
+            })
         })
     },
 
