@@ -900,12 +900,14 @@ var Node = $component ({
                                     .relay (offer, id)
                                     .timeout (30000)
                                     .then (success => {
-                                        if (!success.response.data.answer) throw success
+                                        if (!success.response.data.answer)
+                                            throw success
                                         return success
                                     })
                                     .catch (failure => { log.e (failure) }))
                      ).timeout (30000)
-                      .then (success => { peer.answer (success.response.data.answer) })
+                      .then (success => { 
+                        peer.answer (success.response.data.answer) })
                       .catch (reject)
                 },
                 onconnect: peer => {
@@ -917,11 +919,11 @@ var Node = $component ({
         })
     },
 
-    iterateFindNode: function (id, roots, key) {
+    iterateFindNode: function (id, peers, key) {
 
         return new Promise ((resolve, reject) => {
 
-            this.resolvePeer (id, roots)
+            this.resolvePeer (id, peers)
                 .timeout (30000)
                 .then (peer => {
                     return peer.findNode (key)
@@ -942,25 +944,32 @@ var Node = $component ({
             var shortlist = this.routingTable.sortedByDistanceTo (key)
             var closest = shortlist.first
             var contacted = []
-            var roots = {}
+            var peers = {}
 
             var amount = Math.min (Kademlia.a, shortlist.length)
             var ids = _.times (amount, () => shortlist.shift ())
             ids.each (id => contacted.push (id))
 
             __.map (ids, id => 
-                this.iterateFindNode (id, roots[id], key)
+                this.iterateFindNode (id, peers[id], key)
                     .then (result => {
                         result.response.data.contacts
                             .without (... contacted)
                             .each (contact => {
-                                roots[contact] = _.uniq ([... roots[contact] || [], id])
+                                peers[contact] = 
+                                    _.uniq ([... peers[contact] || [], id])
                                 shortlist.push (contact)
                             })
                         return result
                     }).reflect
             ).then (results => {
-                log.g (shortlist, roots)
+                log.g ('Shortlist:', shortlist)
+                log.g ('Peers:', peers)
+                log.g ('Contacted:', contacted)
+                log.i (results.reduce ((a, b) => [
+                    ... a, 
+                    ... b.response.data.contacts
+                ], []))
             })
         })
     },
