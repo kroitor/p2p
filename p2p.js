@@ -26,12 +26,12 @@
     // string conversion
     $mixin (String, {
 
-        padl: function (padding) {
+        padl: function (padding) { // pad mod length
             var l = this.length % padding.length
             return l ? (padding.substring (0, padding.length - l) + this) : this
         },
 
-        lcp: function (string) {
+        lcp: function (string) { // longest common prefix
             for (var s = '', i = 0; i < this.length; i++, s += this[i])
                 if (this[i] !== string[i]) break
             return s
@@ -86,7 +86,7 @@
                 return (this.length < 2) ? this[0].hex :
                     this.reduce ((p, c) => ((typeof p == 'string') ? p : p.hex) + c.hex)
             },
-            bin: function () {
+            bin: function () { // bitwise representation (string of '0's and '1's)
                 return (this.length < 2) ? this[0].bin :
                     this.reduce ((p, c) => ((typeof p == 'string') ? p : p.bin) + c.bin)
             },
@@ -96,7 +96,7 @@
             btoa: function () { return this.string.btoa },
         },
         
-        bit: function (n) {
+        bit: function (n) { // returns nth bit 
             var bitsPerElement = this.BYTES_PER_ELEMENT * 8
             return (this[Math.floor (n / bitsPerElement)]).bit (n % bitsPerElement)
         },
@@ -147,12 +147,17 @@
     }
 
     // inet_* functions for string to IP / IP to string conversion
+
+    // IPv6
+
     $global.inet6_atoh = (ip => 
         (_.flatten (ip.split (':') .map ((v, k, l) => v.length ? 
             parseInt (v, 16) : _(9 - l.length).times (() => 0)))))
 
     $global.inet6_htoa = (ip =>
         ip.map (x => x.hex).join (':').replace (/(:0)+/, ':'))
+
+    // IPv4
 
     $global.inet_atoh = (ip => 
         ip.split ('.').reduce ((prev, cur) => 
@@ -360,7 +365,7 @@ var Peer = $component ({
 
         id:         undefined,      // remote id
         offer:      undefined,      // SDP offer        
-        mtu:        2,             // Maximum Transmission Unit
+        mtu:        1024,             // Maximum Transmission Unit
         sent:       undefined,      // TX log
         received:   undefined,      // RX log
         name:       'data',         // RTCDataChannel name
@@ -523,8 +528,8 @@ var Peer = $component ({
         })
     },
 
-    relay: function (data, id) { 
-        return this.request ({ type: 'relay', data: data, to: id })
+    relay: function (payload, id) { 
+        return this.request ({ type: 'relay', payload: payload, to: id })
     },
 
     ping: function ()   { return this.request ({ type: 'ping' }) },
@@ -714,10 +719,12 @@ var Kademlia = $singleton (Component, {
 
 class UnreachableError extends Error {
     constructor () { super ('unreachable') }
-}   
+}
+
+//-----------------------------------------------------------------------------   
 
 //-----------------------------------------------------------------------------
-// WebRTC Kademlia Connection Schema
+// WebRTC Connection Schema
 //-----------------------------------------------------------------------------
 //        A         ·         B         ·         C         ·         D        
 //- - - - - - - - - · - - - - - - - - - · - - - - - - - - - · - - - - - - - - -
@@ -754,6 +761,37 @@ class UnreachableError extends Error {
 //                  ·                   ·                   ·
 //-----------------------------------------------------------------------------
 
+//-----------------------------------------------------------------------------
+// iterativeFindNode algorithm (in progress)
+//----------------------------------------------------------------------------- 
+//
+//                                 +-------+   +------+   +-------+
+// --> peer connected? --+- no --->|·······|-->|······|-->|·······|
+//                       |         | relay |   | root |   | peer ·|
+//                      yes <------|·······|<--|······|<--|·······|       
+//                       |         +-------+   +------+   +-------+              
+//                       v                          
+//
+//                            | |
+//                  /-> >-----+ +-----> -\    
+//                 /                      \   
+//              +-+---> resolveFindNode ---+-\
+//             /   \                      /   \     
+//            /     \->       ...       -/     \
+//           /                                  \
+//          /      /-->       ...       -\       \
+//      ---+------+--->       ...       --+-------+---
+//          \      \-->       ...       -/       /
+//           \                                  / 
+//            \    /-->       ...       -\     /  
+//             +--+--->       ...       --+---/
+//                 \-->       ...       -/              
+//
+//
+//-----------------------------------------------------------------------------
+
+//-----------------------------------------------------------------------------
+
 var Node = $component ({
 
     $defaults: {
@@ -787,6 +825,7 @@ var Node = $component ({
 
     onopen: function (peer) { App.submit ('/#' + this.localSDP (peer)) },
     onping: function (peer, packet, event) { peer.pong (packet.id) },
+    
     onfindnode: function (peer, packet, event) {
         var shortlist = 
             this.routingTable
@@ -798,6 +837,12 @@ var Node = $component ({
         }, packet.id)
     },
 
+    onrelay: function (peer, packet, event) {
+
+        log.ii (peer.local, '<', peer.remote, packet.id, packet.data.type, packet.data.payload, '>', packet.data.to)
+
+    },
+
     ondata: function (peer, packet, event) {
         var data = packet.data
         if (data.message)
@@ -806,6 +851,8 @@ var Node = $component ({
             this.onping (peer, packet, event)
         else if (data.type == 'findNode' && this.onfindnode)
             this.onfindnode (peer, packet, event)
+        else if (data.type == 'relay' && this.onrelay)
+            this.onrelay (peer, packet, event)
         else if (data.id)
             App.print ({ html: '\n' + _.stringify (data), from: peer.remote, })
     },
@@ -821,6 +868,18 @@ var Node = $component ({
         App.print ([ 'Connected as', peer.local, 'to', peer.remote ])
 
         if (peer.offer) {
+
+            var other = Object.keys (App.net.nodes)
+                              .filter (id => (id != this.id) && (id != App.node.id))
+                              .first
+
+            this.resolvePeer (other, [ App.node.id ])
+                .then (result => {
+
+                    log.gg (result)
+
+                })
+
             this.iterativeFindNode (this.id)
 //             this.ping (peer)
             peer.request ({ type: 'message', message: 'hello' })
@@ -906,9 +965,10 @@ var Node = $component ({
                                     })
                                     .catch (failure => { log.e (failure) }))
                      ).timeout (30000)
-                      .then (success => { 
-                        peer.answer (success.response.data.answer) })
-                      .catch (reject)
+                      .then (success => {
+                            if (success)
+                                peer.answer (success.response.data.answer)
+                      }).catch (reject)
                 },
                 onconnect: peer => {
                     this.peers[peer.id] = peer
@@ -916,10 +976,11 @@ var Node = $component ({
                     resolve (peer)
                 },
             })
-        })
+
+        }) // TODO error handling .catch (failure => { throw failure })
     },
 
-    iterateFindNode: function (id, peers, key) {
+    resolveFindNode: function (id, peers, key) {
 
         return new Promise ((resolve, reject) => {
 
@@ -928,11 +989,7 @@ var Node = $component ({
                 .then (peer => {
                     return peer.findNode (key)
                         .timeout (30000)
-                        .then (result => {
-                            var data = result.response.data
-                            log (peer.local, '<', peer.remote, result.response.id, data.type, key, data.contacts)
-                            resolve (result)
-                        })
+                        .then (resolve)
                 }).catch (reject)
         })
     },
@@ -944,13 +1001,16 @@ var Node = $component ({
         var contacted = []
         var peers = {}
 
-        var howMany = Math.min (Kademlia.a, shortlist.length)
+        var howMany = _.min ([Kademlia.a, shortlist.length])
         var ids = _(howMany).times (() => shortlist.shift ())
         ids.each (id => contacted.push (id))
-
+    
         __.map (ids, id => 
-            this.iterateFindNode (id, peers[id], key)
+            this.resolveFindNode (id, peers[id], key)
                 .then (result => {
+                    
+                    // TODO check for errors
+
                     result.response.data.contacts
                         .without (... contacted)
                         .each (contact => {
@@ -958,14 +1018,20 @@ var Node = $component ({
                                 _.uniq ([... peers[contact] || [], id])
                             shortlist.push (contact)
                         })
+
                     return result
+
                 }).reflect
+
         ).then (results => {
-            log.g ('Shortlist:', shortlist)
-            log.g ('Peers:', peers)
-            log.g ('Contacted:', contacted)
-            log.i (results.reduce ((a, b) => 
-                [ ... a, ... b.response.data.contacts ], []))
+
+            // TODO check for errors
+
+            log.i (results.reduce ((a, b) => [
+                ... a,
+                ... (b instanceof Error) ? [ b ] :
+                    b.response.data.contacts.without (... contacted),
+            ], []))
         })
     },
 
@@ -1044,10 +1110,8 @@ var App = $singleton (Component, {
 
         if (window.location.hash)
             this.submit ('/' + window.location.hash)
-        else {
-            this.submit ('/offer')
-            this.submit ('/offer')
-        }
+        else
+            _(2).times (() => this.submit ('/offer'))
     },
 
     format: function (message) {
