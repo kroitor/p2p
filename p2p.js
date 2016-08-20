@@ -507,7 +507,7 @@ var Peer = $component ({
         return this.channel.send (data)
     },
 
-    request: function (message, requestID) {
+    transmit: function (id, message) {
 
         return new Promise ((resolve, reject) => {
 
@@ -515,7 +515,6 @@ var Peer = $component ({
                 message : JSON.stringify (message)
 
             var chunks = data.btoa.chop (this.mtu)
-            var id = requestID || Kademlia.random ()
 
             // send first chunk
             this.send ({ id: id, count: chunks.length, chunk: chunks.first })
@@ -524,16 +523,28 @@ var Peer = $component ({
             for (var i = 1; i < chunks.length; i++)
                 this.send ({ id: id, i: i, chunk: chunks[i] })
 
-            this.sent.push ({ resolve: resolve, chunks: chunks, id: id })
+            this.sent.push ({ id: id, resolve: resolve, chunks: chunks })
         })
     },
 
-    relay: function (payload, id) { 
-        return this.request ({ type: 'relay', payload: payload, to: id })
+    request: function (message, requestID) {
+        return this.transmit (Kademlia.random (), message)
+    },
+
+    reply: function (requestID, message) {
+        return this.transmit (requestID, message)
+    },
+
+    relay: function (payload, to) { 
+        return this.request ({ type: 'relay', payload: payload, to: to })
+    },
+
+    forward: function (payload, from) {
+        return this.request ({ type: 'forward', payload: payload, from: from })
     },
 
     ping: function ()   { return this.request ({ type: 'ping' }) },
-    pong: function (id) { return this.request ({ type: 'pong' }, id) },
+    pong: function (id) { return this.reply (id, { type: 'pong' }) },
     
     findNode: function (key) {
         return this.request ({ type: 'findNode', key: key })
@@ -827,20 +838,38 @@ var Node = $component ({
     onping: function (peer, packet, event) { peer.pong (packet.id) },
     
     onfindnode: function (peer, packet, event) {
-        var shortlist = 
-            this.routingTable
-                .sortedByDistanceTo (packet.data.key)
-                .without (peer.id)
-        peer.request ({
-            type: packet.data.type,
-            contacts: shortlist,
-        }, packet.id)
+        peer.reply (packet.id, {
+            type:       packet.data.type,
+            contacts:   this.routingTable
+                            .sortedByDistanceTo (packet.data.key)
+                            .without (peer.id),
+        })
     },
 
     onrelay: function (peer, packet, event) {
 
-        log.ii (peer.local, '<', peer.remote, packet.id, packet.data.type, packet.data.payload, '>', packet.data.to)
+        var to = this.peers[packet.data.to]
+        
+//         this.peers[packet.data.to]
+//             .forward (packet.data.payload, peer.id)
+//             .timeout (30000)
+//             .then (result => {
+//                 peer.reply (packet.id, {
+//                     type: packet.data.type,
+//                     payload: [],                  
+//                 })
+//             })
 
+        log.ii (peer.local, '<', peer.remote, packet.id, packet.data.type, packet.data.payload, '>', packet.data.to)
+    },
+
+    onforward: function (peer, packet, event) {
+
+        peer.reply (packet.id, {
+
+        })
+        
+        log.ii (peer.local, '<', peer.remote, packet.id, packet.data.type, packet.data.payload, '<', packet.data.from)
     },
 
     ondata: function (peer, packet, event) {
@@ -853,6 +882,8 @@ var Node = $component ({
             this.onfindnode (peer, packet, event)
         else if (data.type == 'relay' && this.onrelay)
             this.onrelay (peer, packet, event)
+        else if (data.type == 'forward' && this.onforward)
+            this.onforward (peer, packet, event)
         else if (data.id)
             App.print ({ html: '\n' + _.stringify (data), from: peer.remote, })
     },
