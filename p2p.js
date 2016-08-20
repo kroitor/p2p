@@ -421,6 +421,8 @@ var Peer = $component ({
     },
 
     answer: function (description) {
+        if (typeof description == 'string')
+            description = RTCSessionDescription.fromBase64 (description)
         this.id = description.id
         this.link.setRemoteDescription (description)
         return this
@@ -881,20 +883,24 @@ var Node = $component ({
 
     onforward: function (peer, packet, event) {
 
-//         this.peer ({
-//             offer: packet.data.payload.offer,
-//             onopen: p => {
-//                 var answer = { answer: this.localSDP (p) }
-//                 peer.reply (packet.id, {
-//                     type: packet.data.type,
-//                     payload: answer,
-//                 })
-//             },
-//             onconnect: peer => {
-//                 this.peers[peer.id] = peer
-//                 this.routingTable.insert (peer.id)
-//             },
-//         })
+        this.peer ({
+            offer: packet.data.payload.offer,
+            onopen: p => {
+                var answer = { answer: this.localSDP (p) }
+                peer.reply (packet.id, {
+                    type: packet.data.type,
+                    payload: answer,
+                })
+            },
+            onconnect: peer => {
+                this.peers[peer.id] = peer
+                this.routingTable.insert (peer.id)
+
+                log (peer.local, 'connected to', peer.remote)
+                App.print ([ 'Connected as', peer.local, 'to', peer.remote ])
+
+            },
+        })
 
         log.ii (peer.local, '<', peer.remote, packet.id, packet.data.type, packet.data.payload, '<', packet.data.from)
     },
@@ -926,17 +932,6 @@ var Node = $component ({
         App.print ([ 'Connected as', peer.local, 'to', peer.remote ])
 
         if (peer.offer) {
-
-            var other = Object.keys (App.net.nodes)
-                              .filter (id => (id != this.id) && (id != App.node.id))
-                              .first
-
-            this.resolvePeer (other, [ App.node.id ])
-                .then (result => {
-
-                    log.gg (result)
-
-                })
 
             this.iterativeFindNode (this.id)
 //             this.ping (peer)
@@ -1017,7 +1012,7 @@ var Node = $component ({
                                     .relay (offer, id)
                                     .timeout (30000)
                                     .then (success => {
-                                        if (!success.response.data.answer)
+                                        if (!success.response.data.payload.answer)
                                             throw success
                                         return success
                                     })
@@ -1025,12 +1020,16 @@ var Node = $component ({
                      ).timeout (30000)
                       .then (success => {
                             if (success)
-                                peer.answer (success.response.data.answer)
+                                peer.answer (success.response.data.payload.answer)
                       }).catch (reject)
                 },
                 onconnect: peer => {
                     this.peers[peer.id] = peer
                     this.routingTable.insert (peer.id)
+
+                    log (peer.local, 'connected to', peer.remote)
+                    App.print ([ 'Connected as', peer.local, 'to', peer.remote ])
+
                     resolve (peer)
                 },
             })
