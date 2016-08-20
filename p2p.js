@@ -896,7 +896,7 @@ var Node = $component ({
                 this.peers[peer.id] = peer
                 this.routingTable.insert (peer.id)
 
-                log (peer.local, 'connected to', peer.remote)
+                log (peer.local, 'connected to', peer.remote, peer.localDescription.iceUfrag, peer.remoteDescription.iceUfrag)
                 App.print ([ 'Connected as', peer.local, 'to', peer.remote ])
 
             },
@@ -932,6 +932,11 @@ var Node = $component ({
         App.print ([ 'Connected as', peer.local, 'to', peer.remote ])
 
         if (peer.offer) {
+
+            var other = Object.keys (App.net.nodes).filter (id => (id != this.id) && (id != App.node.id)).first
+            this.resolvePeer (other, [ App.node.id ]).then (peer => {
+                log.gg (peer.id)
+            })
 
             this.iterativeFindNode (this.id)
 //             this.ping (peer)
@@ -1027,7 +1032,7 @@ var Node = $component ({
                     this.peers[peer.id] = peer
                     this.routingTable.insert (peer.id)
 
-                    log (peer.local, 'connected to', peer.remote)
+                    log (peer.local, 'connected to', peer.remote, peer.localDescription.iceUfrag, peer.remoteDescription.iceUfrag)
                     App.print ([ 'Connected as', peer.local, 'to', peer.remote ])
 
                     resolve (peer)
