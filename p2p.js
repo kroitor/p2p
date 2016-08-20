@@ -865,10 +865,21 @@ var Node = $component ({
 
     onforward: function (peer, packet, event) {
 
-        peer.reply (packet.id, {
-
+        this.peer ({
+            offer: packet.data.payload.offer,
+            onopen: peer => {
+                var answer = { answer: this.localSDP (peer) }
+                peer.reply (packet.id, {
+                    type: packet.data.type,
+                    payload: answer,
+                })
+            },
+            onconnect: peer => {
+                this.peers[peer.id] = peer
+                this.routingTable.insert (peer.id)
+            },
         })
-        
+
         log.ii (peer.local, '<', peer.remote, packet.id, packet.data.type, packet.data.payload, '<', packet.data.from)
     },
 
