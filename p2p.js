@@ -893,6 +893,21 @@ var Node = $component ({
                 })
             },
             onconnect: peer => {
+
+                if (this.peers[peer.id]) {
+                    log.i (peer.local, 'duplicate connection to', this.peers[peer.id].remote)
+
+                    var old = this.peers[peer.id]
+
+                    var ufrags = {}
+                    ufrags[peer.localDescription.iceUfrag] = 
+                        ufrags[peer.remoteDescription.iceUfrag] = peer
+                    ufrags[old.localDescription.iceUfrag] =
+                        ufrags[old.remoteDescription.iceUfrag] = old
+
+                    log.e (Object.keys (ufrags).sort ())
+                        
+                }
                 this.peers[peer.id] = peer
                 this.routingTable.insert (peer.id)
 
@@ -934,9 +949,10 @@ var Node = $component ({
         if (peer.offer) {
 
             var other = Object.keys (App.net.nodes).filter (id => (id != this.id) && (id != App.node.id)).first
-            this.resolvePeer (other, [ App.node.id ]).then (peer => {
-                log.gg (peer.id)
-            })
+            if (other)
+                this.resolvePeer (other, [ App.node.id ]).then (peer => {
+                    log.gg (peer.id)
+                })
 
             this.iterativeFindNode (this.id)
 //             this.ping (peer)
@@ -1029,6 +1045,23 @@ var Node = $component ({
                       }).catch (reject)
                 },
                 onconnect: peer => {
+
+                    if (this.peers[peer.id]) {
+
+                        log.i (peer.local, 'duplicate connection to', this.peers[peer.id].remote)
+
+                        var old = this.peers[peer.id]
+
+                        var ufrags = {}
+                        ufrags[peer.localDescription.iceUfrag] = 
+                            ufrags[peer.remoteDescription.iceUfrag] = peer
+                        ufrags[old.localDescription.iceUfrag] =
+                            ufrags[old.remoteDescription.iceUfrag] = old
+
+                        log.e (Object.keys (ufrags).sort ())
+
+                    }
+
                     this.peers[peer.id] = peer
                     this.routingTable.insert (peer.id)
 
@@ -1173,7 +1206,7 @@ var App = $singleton (Component, {
         if (window.location.hash)
             this.submit ('/' + window.location.hash)
         else
-            _(2).times (() => this.submit ('/offer'))
+            _(1).times (() => this.submit ('/offer'))
     },
 
     format: function (message) {
