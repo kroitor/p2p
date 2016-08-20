@@ -390,10 +390,17 @@ var Peer = $component ({
     },
 
     onnegotiationneeded: function () {
+        
         if (this.offer) {
+
+            if (typeof this.offer == 'string')
+                this.offer = RTCSessionDescription.fromBase64 (this.offer)
+
             this.link.setRemoteDescription (this.offer)
             this.createAnswer ()
+
         } else 
+
             this.createOffer ()
     },
 
@@ -550,16 +557,20 @@ var Peer = $component ({
         return this.request ({ type: 'findNode', key: key })
     },
 
-    init: function () {
+    init: function () {        
         this.sent = this.sent || []
         this.received = this.received || []
-        if (this.offer) this.id = this.offer.id
         this.link = new RTCPeerConnection (this.config, null)
         this.link.onicecandidate = this.onicecandidate
         this.link.onnegotiationneeded = this.onnegotiationneeded
         this.link.ondatachannel = this.ondatachannel
         this.channel = this.link.createDataChannel (this.name, this.options)
         this.channel.onmessage = this.onmessage
+        if (this.offer) {
+            if (typeof this.offer == 'string')
+                this.offer = RTCSessionDescription.fromBase64 (this.offer)
+            this.id = this.offer.id
+        }
     },
 })
 
@@ -848,37 +859,42 @@ var Node = $component ({
 
     onrelay: function (peer, packet, event) {
 
-        var to = this.peers[packet.data.to]
+        if (!this.peers[packet.data.to]) {
+            peer.reply (packet.id, {
+                type: packet.data.type,
+                error: 'unreachable',
+            })
+        }
         
-//         this.peers[packet.data.to]
-//             .forward (packet.data.payload, peer.id)
-//             .timeout (30000)
-//             .then (result => {
-//                 peer.reply (packet.id, {
-//                     type: packet.data.type,
-//                     payload: [],                  
-//                 })
-//             })
+        this.peers[packet.data.to]
+            .forward (packet.data.payload, peer.id)
+            .timeout (30000)
+            .then (result => {
+                peer.reply (packet.id, {
+                    type: packet.data.type,
+                    payload: result.response.data.payload,                  
+                })
+            })
 
         log.ii (peer.local, '<', peer.remote, packet.id, packet.data.type, packet.data.payload, '>', packet.data.to)
     },
 
     onforward: function (peer, packet, event) {
 
-        this.peer ({
-            offer: packet.data.payload.offer,
-            onopen: peer => {
-                var answer = { answer: this.localSDP (peer) }
-                peer.reply (packet.id, {
-                    type: packet.data.type,
-                    payload: answer,
-                })
-            },
-            onconnect: peer => {
-                this.peers[peer.id] = peer
-                this.routingTable.insert (peer.id)
-            },
-        })
+//         this.peer ({
+//             offer: packet.data.payload.offer,
+//             onopen: p => {
+//                 var answer = { answer: this.localSDP (p) }
+//                 peer.reply (packet.id, {
+//                     type: packet.data.type,
+//                     payload: answer,
+//                 })
+//             },
+//             onconnect: peer => {
+//                 this.peers[peer.id] = peer
+//                 this.routingTable.insert (peer.id)
+//             },
+//         })
 
         log.ii (peer.local, '<', peer.remote, packet.id, packet.data.type, packet.data.payload, '<', packet.data.from)
     },
