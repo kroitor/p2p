@@ -172,6 +172,18 @@
 
 //-----------------------------------------------------------------------------
 
+var Patient = $component ({
+    $property: {
+        a: function () { return 'a' },
+        b: function () { return 'b' },
+    },
+})
+
+var patient = new Patient ()
+log.ee (patient.a + '.' + patient.b)
+
+//-----------------------------------------------------------------------------
+
 var Address = $component ({
 
     $defaults: {
@@ -448,7 +460,7 @@ var Peer = $component ({
 
     $property: {
         
-        remote: function () { return this.id + this.remoteAddress.string },
+        remote: function () { return '' + this.id + this.remoteAddress.string },
         local:  function () { 
             return (this.attachedTo ?  this.attachedTo.id : '') + 
                 this.localAddress.string
@@ -681,6 +693,7 @@ var RoutingTable = $component ({
     },
 
     sortedByDistanceTo: function (id) {
+        log.gg ('Requested:', id)
         return this.bucketsByPrefix (id).reduce ((a, b) => {
             if (a.length >= this.k) return a
             return [... a, ... b.sortedByDistanceTo (id)]
@@ -843,9 +856,9 @@ var Node = $component ({
                 })
             })
 
-        log.ii (peer.local, '<', peer.remote,
-            packet.id, packet.data.type,
-            packet.data.payload, '>', packet.data.to)
+//         log.ii (peer.local, '<', peer.remote,
+//             packet.id, packet.data.type,
+//             packet.data.payload, '>', packet.data.to)
     },
 
     onforward: function (peer, packet, event) {
@@ -862,15 +875,21 @@ var Node = $component ({
             },
         })
 
-        log.ii (peer.local, '<', peer.remote,
-            packet.id, packet.data.type,
-            packet.data.payload, '<', packet.data.from)
+//         log.ii (peer.local, '<', peer.remote,
+//             packet.id, packet.data.type,
+//             packet.data.payload, '<', packet.data.from)
     },
 
     ondata: function (peer, packet, event) {
         var data = packet.data
-        if (data.message)
-            App.print ({ html: data.message, from: peer.remote,  })
+        if (data.message) {
+            App.print ({
+               html: data.message,
+//                 from: [peer.local, '<', peer.remote].join (' '),
+                from: peer.local + ' < ' + peer.remote,
+            })
+//             log.gg (peer.local + ' < ' + peer.remote)
+        }
         else if (data.type == 'ping' && this.onping)
             this.onping (peer, packet, event)
         else if (data.type == 'findNode' && this.onfindnode)
@@ -888,7 +907,7 @@ var Node = $component ({
         if (!this.peers[peer.id])
             return peer
 
-        log.i (peer.local, 'duplicated', this.peers[peer.id].remote)
+//         log.i (peer.local, 'duplicated', this.peers[peer.id].remote)
 
         var old = this.peers[peer.id]
 
@@ -900,7 +919,6 @@ var Node = $component ({
 
         var keys = Object.keys (ufrags).sort ()
         var key = keys.first
-        log.e (keys, 'old:', old == ufrags[key], 'new:', peer == ufrags[key])
 
         var winner = (old == ufrags[key]) ? old : peer
         var loser = (peer == ufrags[key]) ? old : peer
@@ -925,14 +943,20 @@ var Node = $component ({
 
         if (!peer.offer) return
 
-        var other = 
-            Object.keys (App.net.nodes)
-                  .reject (id => [ this.id, App.node.id ].contains (id))
-                  .first
+        Object.keys (App.net.nodes)
+              .reject (id => [ this.id, App.node.id ].contains (id))
+              .map (id => 
+                this.resolvePeer (id, [ App.node.id ])
+                    .then (peer => { log.g (peer.id) }))
+                    
+//         var other = 
+//             Object.keys (App.net.nodes)
+//                   .reject (id => [ this.id, App.node.id ].contains (id))
+//                   .first
 
-        if (other)
-            this.resolvePeer (other, [ App.node.id ])
-                .then (peer => { log.gg (peer.id) })
+//         if (other)
+//             this.resolvePeer (other, [ App.node.id ])
+//                 .then (peer => { log.g (peer.id) })
 
         this.iterativeFindNode (this.id)
 
@@ -1167,7 +1191,7 @@ var App = $singleton (Component, {
         if (window.location.hash)
             this.submit ('/' + window.location.hash)
         else
-            _(2).times (() => this.submit ('/offer'))
+            _(10).times (() => this.submit ('/offer'))
     },
 
     format: function (message) {
