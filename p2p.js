@@ -943,7 +943,7 @@ var Node = $component ({
         this.routingTable.insert (peer.id)
 
         log (peer.local, 'connected to', peer.remote)
-        App.print ([ 'Connected as', peer.local, 'to', peer.remote ])
+        App.print ([ peer.local, 'connected to', peer.remote ])
 
         return peer
     },
@@ -964,7 +964,7 @@ var Node = $component ({
 
         this.iterativeFindNode (this.id)
 
-        peer.message ('hello')/* .timeout (3000) */.then (log.g).catch (log.e)
+//         peer.message ('hello').timeout (3000).then (log.g).catch (log.e)
 
         return peer
     },
