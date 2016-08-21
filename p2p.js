@@ -172,18 +172,6 @@
 
 //-----------------------------------------------------------------------------
 
-var Patient = $component ({
-    $property: {
-        a: function () { return 'a' },
-        b: function () { return 'b' },
-    },
-})
-
-var patient = new Patient ()
-log.ee (patient.a + '.' + patient.b)
-
-//-----------------------------------------------------------------------------
-
 var Address = $component ({
 
     $defaults: {
