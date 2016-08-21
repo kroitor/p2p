@@ -876,7 +876,9 @@ var Node = $component ({
                 })
             })
 
-        log.ii (peer.local, '<', peer.remote, packet.id, packet.data.type, packet.data.payload, '>', packet.data.to)
+        log.ii (peer.local, '<', peer.remote,
+            packet.id, packet.data.type,
+            packet.data.payload, '>', packet.data.to)
     },
 
     onforward: function (peer, packet, event) {
@@ -890,32 +892,11 @@ var Node = $component ({
                     payload: answer,
                 })
             },
-            onconnect: peer => {
-
-                if (this.peers[peer.id]) {
-                    log.i (peer.local, 'duplicate connection to', this.peers[peer.id].remote)
-
-                    var old = this.peers[peer.id]
-
-                    var ufrags = {}
-                    ufrags[peer.localDescription.iceUfrag] = 
-                        ufrags[peer.remoteDescription.iceUfrag] = peer
-                    ufrags[old.localDescription.iceUfrag] =
-                        ufrags[old.remoteDescription.iceUfrag] = old
-
-                    log.e (Object.keys (ufrags).sort ())
-                        
-                }
-                this.peers[peer.id] = peer
-                this.routingTable.insert (peer.id)
-
-                log (peer.local, 'connected to', peer.remote, peer.localDescription.iceUfrag, peer.remoteDescription.iceUfrag)
-                App.print ([ 'Connected as', peer.local, 'to', peer.remote ])
-
-            },
         })
 
-        log.ii (peer.local, '<', peer.remote, packet.id, packet.data.type, packet.data.payload, '<', packet.data.from)
+        log.ii (peer.local, '<', peer.remote,
+            packet.id, packet.data.type,
+            packet.data.payload, '<', packet.data.from)
     },
 
     ondata: function (peer, packet, event) {
@@ -934,7 +915,29 @@ var Node = $component ({
             App.print ({ html: '\n' + _.stringify (data), from: peer.remote, })
     },
 
+    mergeDuplicates: function (peer) {
+
+        if (!this.peers[peer.id])
+            return peer
+
+        log.i (peer.local, 'duplicate connection to', this.peers[peer.id].remote)
+
+        var old = this.peers[peer.id]
+
+        var ufrags = {}
+        ufrags[peer.localDescription.iceUfrag] = 
+            ufrags[peer.remoteDescription.iceUfrag] = peer
+        ufrags[old.localDescription.iceUfrag] =
+            ufrags[old.remoteDescription.iceUfrag] = old
+
+        log.e (Object.keys (ufrags).sort ())
+
+        return peer
+    },
+
     onconnect: function (peer) {
+
+        peer = this.mergeDuplicates (peer)
 
         this.peers[peer.id] = peer
         this.routingTable.insert (peer.id)
@@ -942,10 +945,10 @@ var Node = $component ({
         log (peer.local, 'connected to', peer.remote)
         App.print ([ 'Connected as', peer.local, 'to', peer.remote ])
 
-        this.onafterconnect (peer)
+        return peer
     },
 
-    onafterconnect: function (peer) {
+    join: function (peer) {
 
         if (!peer.offer) return
 
@@ -953,6 +956,7 @@ var Node = $component ({
             Object.keys (App.net.nodes)
                   .reject (id => [ this.id, App.node.id ].contains (id))
                   .first
+
         if (other)
             this.resolvePeer (other, [ App.node.id ]).then (peer => {
                 log.gg (peer.id)
@@ -961,6 +965,8 @@ var Node = $component ({
         this.iterativeFindNode (this.id)
 
         peer.message ('hello')/* .timeout (3000) */.then (log.g).catch (log.e)
+
+        return peer
     },
 
     ondisconnect: function (peer) {    
@@ -983,7 +989,7 @@ var Node = $component ({
             config = RTCSessionDescription.fromBase64 (config)
         if (config.answer)
             return this.answer (config)
-        return this.peer ({ offer: config }).attachTo (this)
+        return this.peer ({ offer: config, onconnect: this.onconnect.then (this.join) })
     },
 
     peer: function (config) {
@@ -1021,6 +1027,7 @@ var Node = $component ({
                 return reject (new UnreachableError ())
 
             this.peer ({
+
                 onopen: peer => {
                     var offer = { offer: this.localSDP (peer) }
                     Promise.race (
@@ -1041,32 +1048,8 @@ var Node = $component ({
                                 peer.answer (success.response.data.payload.answer)
                       }).catch (reject)
                 },
-                onconnect: peer => {
 
-                    if (this.peers[peer.id]) {
-
-                        log.i (peer.local, 'duplicate connection to', this.peers[peer.id].remote)
-
-                        var old = this.peers[peer.id]
-
-                        var ufrags = {}
-                        ufrags[peer.localDescription.iceUfrag] = 
-                            ufrags[peer.remoteDescription.iceUfrag] = peer
-                        ufrags[old.localDescription.iceUfrag] =
-                            ufrags[old.remoteDescription.iceUfrag] = old
-
-                        log.e (Object.keys (ufrags).sort ())
-
-                    }
-
-                    this.peers[peer.id] = peer
-                    this.routingTable.insert (peer.id)
-
-                    log (peer.local, 'connected to', peer.remote, peer.localDescription.iceUfrag, peer.remoteDescription.iceUfrag)
-                    App.print ([ 'Connected as', peer.local, 'to', peer.remote ])
-
-                    resolve (peer)
-                },
+                onconnect: this.onconnect.then (resolve),
             })
 
         }) // TODO error handling .catch (failure => { throw failure })
@@ -1157,8 +1140,10 @@ var Net = $component ({
                 if (this.attached[i].bind (config))
                     return
 
-        if (!config.answer)
-            return this.node ().peer ({ offer: config })
+        if (!config.answer) {
+            var node = this.node ()
+            return node.peer ({ offer: config, onconnect: node.onconnect.then (node.join) })
+        }
 
         return undefined
     },
@@ -1198,12 +1183,12 @@ var App = $singleton (Component, {
         this.usage ()
         
         this.net = new Net ()
-        this.node = this.net.node ()
+        this.node = this.net.node ({ id: '++++++++++++++++++++++++++++' })
 
         if (window.location.hash)
             this.submit ('/' + window.location.hash)
         else
-            _(1).times (() => this.submit ('/offer'))
+            _(2).times (() => this.submit ('/offer'))
     },
 
     format: function (message) {
@@ -1241,14 +1226,19 @@ var App = $singleton (Component, {
             if (/#([a-zA-Z0-9+/=:-]+)/.test (input))
                 this.net.bind (input.match (/#([a-zA-Z0-9+/=:-]+)/)[1])
             else if (firstWord == '/offer')
-                this.node.peer ()
+                this.node.peer ({ onconnect: this.node.onconnect.then (this.node.join) })
             else if (firstWord == '/ping')
                 this.node.attached.each (peer => this.node.ping (peer))
             else      
                 this.usage ()  
         } else {
             this.print ({ html: input, from: 'you' })
-            this.node.broadcast (input).each (x => x.catch (e => { if (_.isTypeOf (TimeoutError, e)) log.ii ('Timeout Test OK') }))
+            this.node
+                .broadcast (input)
+                .each (x => x.catch (e => { // weird... could've been __.map / Promise.all
+                    if (_.isTypeOf (TimeoutError, e))
+                        log.ii ('Timeout Test OK')
+                }))
         }
     },
 })
