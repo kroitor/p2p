@@ -769,13 +769,13 @@ class UnreachableError extends Error {
 //        |         ·                   ·                   ·
 //· · · · <------------ AC connection ------------> · · · · · · · · · · · · · ·
 //                  ·                   ·                   ·
-//    A   ----- relayOffer --->         ·                   ·
-//                  ·         |         ·                   ·
-//                  ·         +------------- forwardOffer ------------>
+//    A   -------------- relayOffer -------------->         ·
+//                  ·                   ·         |         ·
+//                  ·                   ·         +--- forwardOffer -->
 //                  ·                   ·                   ·         |
-//                  ·         <------------- relayAnswer -------------+   D
-//                  ·         |         ·                   ·
-//        <-- forwardAnswer --+         ·                   ·
+//                  ·                   ·         <--- relayAnswer ---+   D
+//                  ·                   ·         |         ·
+//        <------------ forwardAnswer ------------+         ·
 //        |         ·                   ·                   ·
 //· · · · <---------------------- AD connection ----------------------> · · · ·
 //                  ·                   ·                   ·
@@ -852,6 +852,7 @@ var Node = $component ({
 
         this.peer ({
             offer: packet.data.payload.offer,
+            onconnect: this.merge.then (this.onconnect),
             onopen: p => {
                 var answer = { answer: this.localSDP (p) }
                 peer.reply (packet.id, {
@@ -882,12 +883,12 @@ var Node = $component ({
             App.print ({ html: '\n' + _.stringify (data), from: peer.remote, })
     },
 
-    mergeDuplicates: function (peer) {
+    merge: function (peer) {
 
         if (!this.peers[peer.id])
             return peer
 
-        log.i (peer.local, 'duplicate connection to', this.peers[peer.id].remote)
+        log.i (peer.local, 'duplicated', this.peers[peer.id].remote)
 
         var old = this.peers[peer.id]
 
@@ -897,14 +898,19 @@ var Node = $component ({
         ufrags[old.localDescription.iceUfrag] =
             ufrags[old.remoteDescription.iceUfrag] = old
 
-        log.e (Object.keys (ufrags).sort ())
+        var keys = Object.keys (ufrags).sort ()
+        var key = keys.first
+        log.e (keys, 'old:', old == ufrags[key], 'new:', peer == ufrags[key])
 
-        return peer
+        var winner = (old == ufrags[key]) ? old : peer
+        var loser = (peer == ufrags[key]) ? old : peer
+
+//         loser.detach ()
+        loser.link.close ()
+        return winner
     },
 
     onconnect: function (peer) {
-
-        peer = this.mergeDuplicates (peer)
 
         this.peers[peer.id] = peer
         this.routingTable.insert (peer.id)
@@ -925,9 +931,8 @@ var Node = $component ({
                   .first
 
         if (other)
-            this.resolvePeer (other, [ App.node.id ]).then (peer => {
-                log.gg (peer.id)
-            })
+            this.resolvePeer (other, [ App.node.id ])
+                .then (peer => { log.gg (peer.id) })
 
         this.iterativeFindNode (this.id)
 
@@ -939,6 +944,8 @@ var Node = $component ({
     ondisconnect: function (peer) {    
         log (peer.local, 'disconnected from', peer.remote)
         App.print ([ peer.local, 'disconnected from', peer.remote ])
+
+        peer.detach ()
     },
 
     find: function (address) {
@@ -956,11 +963,19 @@ var Node = $component ({
             config = RTCSessionDescription.fromBase64 (config)
         if (config.answer)
             return this.answer (config)
-        return this.peer ({ offer: config, onconnect: this.onconnect.then (this.join) })
+        return this.peer ({ offer: config })
     },
 
     peer: function (config) {
-        return this.attach (new Peer (_.extended (this.interface, config)))
+        
+        var settings = { 
+            onconnect:
+                this.merge
+                    .then (this.onconnect)
+                    .then (this.join)
+        }
+
+        return this.attach (new Peer (_.extended (this.interface, settings, config)))
     },
 
     broadcast: function (message) {
@@ -994,7 +1009,9 @@ var Node = $component ({
                 return reject (new UnreachableError ())
 
             this.peer ({
-
+                onconnect: this.merge
+                               .then (this.onconnect)
+                               .then (resolve),
                 onopen: peer => {
                     var offer = { offer: this.localSDP (peer) }
                     Promise.race (
@@ -1015,10 +1032,7 @@ var Node = $component ({
                                 peer.answer (success.response.data.payload.answer)
                       }).catch (reject)
                 },
-
-                onconnect: this.onconnect.then (resolve),
             })
-
         }) // TODO error handling .catch (failure => { throw failure })
     },
 
@@ -1107,10 +1121,8 @@ var Net = $component ({
                 if (this.attached[i].bind (config))
                     return
 
-        if (!config.answer) {
-            var node = this.node ()
-            return node.peer ({ offer: config, onconnect: node.onconnect.then (node.join) })
-        }
+        if (!config.answer)
+            return this.node ().peer ({ offer: config })
 
         return undefined
     },
@@ -1193,7 +1205,7 @@ var App = $singleton (Component, {
             if (/#([a-zA-Z0-9+/=:-]+)/.test (input))
                 this.net.bind (input.match (/#([a-zA-Z0-9+/=:-]+)/)[1])
             else if (firstWord == '/offer')
-                this.node.peer ({ onconnect: this.node.onconnect.then (this.node.join) })
+                this.node.peer ()
             else if (firstWord == '/ping')
                 this.node.attached.each (peer => this.node.ping (peer))
             else      
