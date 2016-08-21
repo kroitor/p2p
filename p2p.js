@@ -502,17 +502,14 @@ var Peer = $component ({
             if (!data.id && this.ondata)
                 return this.ondata (this, data, event)
         } catch (e) {
-            return this.ondata ?
-                this.ondata (this, event.data, event) :
-                    undefined
+            return this.ondata ? this.ondata (this, event.data, event) : undefined
         }
 
         this.onchunk (data, event)
     },
         
     send: function (data) {
-        var data = (typeof data == 'string') ?
-            data : JSON.stringify (data)
+        var data = (typeof data == 'string') ? data : JSON.stringify (data)
         return this.channel.send (data)
     },
 
@@ -536,7 +533,7 @@ var Peer = $component ({
         })
     },
 
-    request: function (message, requestID) {
+    request: function (message) {
         return this.transmit (Kademlia.random (), message)
     },
 
@@ -551,13 +548,14 @@ var Peer = $component ({
     forward: function (payload, from) {
         return this.request ({ type: 'forward', payload: payload, from: from })
     },
-
-    ping: function ()   { return this.request ({ type: 'ping' }) },
-    pong: function (id) { return this.reply (id, { type: 'pong' }) },
     
     findNode: function (key) {
         return this.request ({ type: 'findNode', key: key })
     },
+
+    message: function (message) { return this.request ({ message: message }) },
+    ping:    function ()        { return this.request ({ type: 'ping' }) },
+    pong:    function (id)      { return this.reply (id, { type: 'pong' }) },
 
     init: function () {        
         this.sent = this.sent || []
@@ -940,30 +938,32 @@ var Node = $component ({
 
         this.peers[peer.id] = peer
         this.routingTable.insert (peer.id)
-//             .then (success => {})
-//             .catch (failure => {})
 
         log (peer.local, 'connected to', peer.remote)
         App.print ([ 'Connected as', peer.local, 'to', peer.remote ])
 
-        if (peer.offer) {
-
-            var other = Object.keys (App.net.nodes).filter (id => (id != this.id) && (id != App.node.id)).first
-            if (other)
-                this.resolvePeer (other, [ App.node.id ]).then (peer => {
-                    log.gg (peer.id)
-                })
-
-            this.iterativeFindNode (this.id)
-//             this.ping (peer)
-            peer.request ({ type: 'message', message: 'hello' })
-                .then  (success => log ('Reply:', success ))
-                .catch (failure => log ('Timeout OK'))
-        }
+        this.onafterconnect (peer)
     },
 
-    ondisconnect: function (peer) {
-        
+    onafterconnect: function (peer) {
+
+        if (!peer.offer) return
+
+        var other = 
+            Object.keys (App.net.nodes)
+                  .reject (id => [ this.id, App.node.id ].contains (id))
+                  .first
+        if (other)
+            this.resolvePeer (other, [ App.node.id ]).then (peer => {
+                log.gg (peer.id)
+            })
+
+        this.iterativeFindNode (this.id)
+
+        peer.message ('hello')/* .timeout (3000) */.then (log.g).catch (log.e)
+    },
+
+    ondisconnect: function (peer) {    
         log (peer.local, 'disconnected from', peer.remote)
         App.print ([ peer.local, 'disconnected from', peer.remote ])
     },
@@ -979,13 +979,10 @@ var Node = $component ({
     },
 
     bind: function (config) {
-
         if (typeof config == 'string')
             config = RTCSessionDescription.fromBase64 (config)
-
         if (config.answer)
             return this.answer (config)
-
         return this.peer ({ offer: config }).attachTo (this)
     },
 
@@ -994,7 +991,7 @@ var Node = $component ({
     },
 
     broadcast: function (message) {
-        return this.attached.map (peer => peer.request (message))
+        return this.attached.map (peer => peer.message (message))
     },
 
     ping: function (peer, n) {
@@ -1251,7 +1248,7 @@ var App = $singleton (Component, {
                 this.usage ()  
         } else {
             this.print ({ html: input, from: 'you' })
-            this.node.broadcast ({ message: input }).each (x => x.catch (e => { if (_.isTypeOf (TimeoutError, e)) log.ii ('Timeout Test OK') }))
+            this.node.broadcast (input).each (x => x.catch (e => { if (_.isTypeOf (TimeoutError, e)) log.ii ('Timeout Test OK') }))
         }
     },
 })
