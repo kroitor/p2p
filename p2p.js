@@ -277,17 +277,13 @@ $mixin (RTCSessionDescription, {
         },  
 
         bestAddress: function () {
-//             var matches = this.sdp.match (/^a=candidate:.+?$/gmi)
-//             if (matches.length < 2) {
-//                 log.ee ('Less than 2 matches:', matches.first)
-//             }
             return this.sdp.match (/^a=candidate:.+?$/gmi).map (x => {
                 let [, priority, ip, port] = 
                     x.match (/^a=candidate:(?:\S+\s){3}(\S+)\s(\S+)\s(\S+)/i)
                 return {
                     address: Address.fromString (ip + ':' + port),
                     priority: parseInt (priority) }
-            }).filter (x => (/*(x.address.version == 4) && */x.address.isNotLocal))
+            }).filter (x => ((x.address.version == 4) && x.address.isNotLocal))
             .reduce ((prev, cur) => prev.priority >= cur.priority ? prev : cur)
             .address
         },
