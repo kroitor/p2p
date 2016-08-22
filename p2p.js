@@ -277,6 +277,10 @@ $mixin (RTCSessionDescription, {
         },  
 
         bestAddress: function () {
+//             var matches = this.sdp.match (/^a=candidate:.+?$/gmi)
+//             if (matches.length < 2) {
+//                 log.ee ('Less than 2 matches:', matches.first)
+//             }
             return this.sdp.match (/^a=candidate:.+?$/gmi).map (x => {
                 let [, priority, ip, port] = 
                     x.match (/^a=candidate:(?:\S+\s){3}(\S+)\s(\S+)\s(\S+)/i)
@@ -379,14 +383,33 @@ var Peer = $component ({
 
         config: {                   // RTCPeerConnection config
             iceServers: [{
-                urls: [ 'stun:stun.l.google.com:19302', ],
+                urls: [
+                    'stun:stun.ideasip.com',             // +
+                    'stun:stun.schlund.de',              // +
+//                     'stun:stun.voiparound.com',          // +
+//                     'stun:stun.voipbuster.com',          // +
+//                     'stun:stun4.l.google.com:19302',     // +                    
+//                     'stun:stun.voipstunt.com',           // =
+//                     'stun:stun.l.google.com:19302',      // -
+//                     'stun:stun1.l.google.com:19302',     // -
+//                     'stun:stun2.l.google.com:19302',     // -
+//                     'stun:stun3.l.google.com:19302',     // -
+//                     'stun:stun.ekiga.net',               // -
+//                     'stun:stun.voxgratia.org',           // -
+                ],
             }],
         },
     },
 
     onicecandidate: function (event) {
+        
+//         if (event.candidate)
+//             log (event.candidate.candidate)
+            
         if (!event.candidate && this.onopen)
-            this.onopen (this)
+//             log.i (this.localDescription.sdp)
+            if (!event.candidate && this.onopen)
+                this.onopen (this)
     },
 
     onnegotiationneeded: function () {
@@ -396,8 +419,9 @@ var Peer = $component ({
             if (typeof this.offer == 'string')
                 this.offer = RTCSessionDescription.fromBase64 (this.offer)
 
-            this.link.setRemoteDescription (this.offer)
-            this.createAnswer ()
+            this.link.setRemoteDescription (this.offer).then (() => {
+                this.createAnswer ()
+            })
 
         } else 
 
@@ -681,7 +705,6 @@ var RoutingTable = $component ({
     },
 
     sortedByDistanceTo: function (id) {
-        log.gg ('Requested:', id)
         return this.bucketsByPrefix (id).reduce ((a, b) => {
             if (a.length >= this.k) return a
             return [... a, ... b.sortedByDistanceTo (id)]
@@ -922,7 +945,7 @@ var Node = $component ({
         this.routingTable.insert (peer.id)
 
         log (peer.local, 'connected to', peer.remote)
-        App.print ([ peer.local, 'connected to', peer.remote ])
+//         App.print ([ peer.local, 'connected to', peer.remote ])
 
         return peer
     },
@@ -935,7 +958,7 @@ var Node = $component ({
               .reject (id => [ this.id, App.node.id ].contains (id))
               .map (id => 
                 this.resolvePeer (id, [ App.node.id ])
-                    .then (peer => { log.g (peer.id) }))
+                    .then (peer => { /* log.g (peer.id) */ }))
                     
 //         var other = 
 //             Object.keys (App.net.nodes)
@@ -1007,7 +1030,7 @@ var Node = $component ({
                         log (peer.local, '<', peer.remote, success.request.id, success.response.data.type, elapsed)
                     })
             } else clearInterval (interval)
-        }), 1000)
+        }), 1500)
     },
 
     resolvePeer: function (id, peers) {
@@ -1095,11 +1118,11 @@ var Node = $component ({
 
             // TODO check for errors
 
-            log.i (results.reduce ((a, b) => [
-                ... a,
-                ... (b instanceof Error) ? [ b ] :
-                    b.response.data.contacts.without (... contacted),
-            ], []))
+//             log.i (results.reduce ((a, b) => [
+//                 ... a,
+//                 ... (b instanceof Error) ? [ b ] :
+//                     b.response.data.contacts.without (... contacted),
+//             ], []))
         })
     },
 
@@ -1113,7 +1136,7 @@ var Net = $component ({
 
         nodes: {},
 
-        k: 4,
+        k: 20,
         B: 160,
     },
 
@@ -1178,8 +1201,22 @@ var App = $singleton (Component, {
 
         if (window.location.hash)
             this.submit ('/' + window.location.hash)
-        else
-            _(10).times (() => this.submit ('/offer'))
+        else {
+
+            // currently executing block
+
+            var i = 0
+            function fork () {
+                log.ee ('Done:', App.net.attached.length, 'nodes')
+                if (++i < 16) {
+                    App.submit ('/offer')
+                    setTimeout (fork, i * 900)
+                }
+            }
+
+            fork ()
+
+        }
     },
 
     format: function (message) {
