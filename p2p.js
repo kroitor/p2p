@@ -287,7 +287,7 @@ $mixin (RTCSessionDescription, {
                 return {
                     address: Address.fromString (ip + ':' + port),
                     priority: parseInt (priority) }
-            }).filter (x => ((x.address.version == 4) && x.address.isNotLocal))
+            }).filter (x => (/*(x.address.version == 4) && */x.address.isNotLocal))
             .reduce ((prev, cur) => prev.priority >= cur.priority ? prev : cur)
             .address
         },
