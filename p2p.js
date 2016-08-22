@@ -959,14 +959,14 @@ var Node = $component ({
 
         if (!peer.offer) return
 
+        var pool = new TaskPool ({ maxConcurrency: 1 })
+
         Object.keys (App.net.nodes)
               .reject (id => [ this.id, App.node.id ].contains (id))
-              .map (id => {
-                    __.delay (100).then (() => { 
-                        this.resolvePeer (id, [ App.node.id ])
-                            .then (peer => { /* log.g (peer.id) */ }) 
-                    })
-                })
+              .each ((id, i) => {
+
+                  pool.run (() => this.resolvePeer (id, [ App.node.id ]))
+              })
                     
 //         var other = 
 //             Object.keys (App.net.nodes)
@@ -1216,9 +1216,9 @@ var App = $singleton (Component, {
             var i = 0
             function fork () {
                 log.ee ('Done:', App.net.attached.length, 'nodes')
-                if (++i < 10) {
+                if (++i < 20) {
                     App.submit ('/offer')
-                    setTimeout (fork, i * 900)
+                    setTimeout (fork, i * 1000)
                 }
             }
 
