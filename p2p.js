@@ -403,13 +403,14 @@ var Peer = $component ({
 
     onicecandidate: function (event) {
         
-//         if (event.candidate)
-//             log (event.candidate.candidate)
+        if (event.candidate)
+            log.i (event.candidate.candidate)
+            
+//         if (!event.candidate && this.onopen)
+//             log.i (this.localDescription.sdp)
             
         if (!event.candidate && this.onopen)
-//             log.i (this.localDescription.sdp)
-            if (!event.candidate && this.onopen)
-                this.onopen (this)
+            this.onopen (this)
     },
 
     onnegotiationneeded: function () {
@@ -430,7 +431,10 @@ var Peer = $component ({
 
     createAnswer: function () {
         this.link.createAnswer ().then (answer => {
-            this.link.setLocalDescription (answer)
+//             log.g ('answer begin')
+            this.link.setLocalDescription (answer).then (() => {
+//                 log.g ('answer end')
+            })
         }).catch (reason => {
             throw new Error (reason)
         })
@@ -438,7 +442,10 @@ var Peer = $component ({
 
     createOffer: function () {
         this.link.createOffer ().then (offer => {
-            this.link.setLocalDescription (offer)
+//             log.i ('offer begin')
+            this.link.setLocalDescription (offer).then (() => {
+//                 log.i ('offer end')
+            })
         }).catch (reason => {
             throw new Error (reason)
         })
@@ -944,7 +951,7 @@ var Node = $component ({
         this.peers[peer.id] = peer
         this.routingTable.insert (peer.id)
 
-//         log (peer.local, 'connected to', peer.remote)
+        log (peer.local, 'connected to', peer.remote)
 //         App.print ([ peer.local, 'connected to', peer.remote ])
 
         return peer
@@ -956,9 +963,12 @@ var Node = $component ({
 
         Object.keys (App.net.nodes)
               .reject (id => [ this.id, App.node.id ].contains (id))
-              .map (id => 
-                this.resolvePeer (id, [ App.node.id ])
-                    .then (peer => { /* log.g (peer.id) */ }))
+              .map (id => {
+                    __.delay (100).then (() => { 
+                        this.resolvePeer (id, [ App.node.id ])
+                            .then (peer => { /* log.g (peer.id) */ }) 
+                    })
+                })
                     
 //         var other = 
 //             Object.keys (App.net.nodes)
@@ -1208,7 +1218,7 @@ var App = $singleton (Component, {
             var i = 0
             function fork () {
                 log.ee ('Done:', App.net.attached.length, 'nodes')
-                if (++i < 16) {
+                if (++i < 10) {
                     App.submit ('/offer')
                     setTimeout (fork, i * 900)
                 }
