@@ -238,7 +238,7 @@ var Address = $component ({
             var version = (view.byteLength > 6) ? 6 : 4
             if (version == 6) {
                 ip = []
-                for (i = 0; i < (view.byteLength - 2); i += 2)
+                for (var i = 0; i < (view.byteLength - 2); i += 2)
                     ip.push (view.getUint16 (i))   
                 port = view.getUint16 (i)
             } else {
