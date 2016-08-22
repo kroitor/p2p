@@ -944,7 +944,7 @@ var Node = $component ({
         this.peers[peer.id] = peer
         this.routingTable.insert (peer.id)
 
-        log (peer.local, 'connected to', peer.remote)
+//         log (peer.local, 'connected to', peer.remote)
 //         App.print ([ peer.local, 'connected to', peer.remote ])
 
         return peer
