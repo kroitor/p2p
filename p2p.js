@@ -408,7 +408,7 @@ var Peer = $component ({
             
 //         if (!event.candidate && this.onopen)
 //             log.i (this.localDescription.sdp)
-            
+
         if (!event.candidate && this.onopen)
             this.onopen (this)
     },
@@ -420,6 +420,8 @@ var Peer = $component ({
             if (typeof this.offer == 'string')
                 this.offer = RTCSessionDescription.fromBase64 (this.offer)
 
+            log (this.offer.sdp)
+            
             this.link.setRemoteDescription (this.offer).then (() => {
                 this.createAnswer ()
             })
