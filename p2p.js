@@ -416,7 +416,7 @@ var Peer = $component ({
             if (typeof this.offer == 'string')
                 this.offer = RTCSessionDescription.fromBase64 (this.offer)
 
-            log (this.offer.sdp)
+//             log (this.offer.sdp)
             
             this.link.setRemoteDescription (this.offer).then (() => {
                 this.createAnswer ()
