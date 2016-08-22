@@ -883,10 +883,12 @@ var Node = $component ({
             offer: packet.data.payload.offer,
             onconnect: this.merge.then (this.onconnect),
             onopen: p => {
-                var answer = { answer: this.localSDP (p) }
-                peer.reply (packet.id, {
-                    type: packet.data.type,
-                    payload: answer,
+                __(() => {
+                    var answer = { answer: this.localSDP (p) }
+                    peer.reply (packet.id, {
+                        type: packet.data.type,
+                        payload: answer,
+                    })                    
                 })
             },
         })
