@@ -452,7 +452,8 @@ var Peer = $component ({
     answer: function (description) {
         if (typeof description == 'string')
             description = RTCSessionDescription.fromBase64 (description)
-        this.id = description.id
+        if (description.id)
+            this.id = description.id
         this.link.setRemoteDescription (description)
         return this
     },
@@ -1210,27 +1211,59 @@ var App = $singleton (Component, {
         this.input.focus ()
         this.usage ()
         
-        this.net = new Net ()
-        this.node = this.net.node ({ id: '++++++++++++++++++++++++++++' })
+//         this.net = new Net ()
+//         this.node = this.net.node ({ id: '++++++++++++++++++++++++++++' })
 
-        if (window.location.hash)
-            this.submit ('/' + window.location.hash)
-        else {
+//         if (window.location.hash)
+//             this.submit ('/' + window.location.hash)
+//         else {
 
-            // currently executing block
+//             // currently executing block
 
-            var i = 0
-            function fork () {
-                log.ee ('Done:', App.net.attached.length, 'nodes')
-                if (++i < 8) {
-                    App.submit ('/offer')
-                    setTimeout (fork, i * 1000)
-                }
+//             var i = 0
+//             function fork () {
+//                 log.ee ('Done:', App.net.attached.length, 'nodes')
+//                 if (++i < 5) {
+//                     App.submit ('/offer')
+//                     setTimeout (fork, i * 1000)
+//                 }
+//             }
+
+//             fork ()
+
+//         }
+
+        var peers = []
+        var n = 200
+        var i = 0
+
+        var interval = setInterval (() => {
+            if (i++ < n) {
+                var a = new Peer ({
+                    onopen: peer => {
+                        var b = new Peer ({
+                            offer: a.localDescription,
+                            onopen: peer => {
+                                a.answer (b.localDescription)
+                            },
+                            onconnect: peer => {
+                                log.i (b.localDescription.sdp, '\n', b.remoteDescription.sdp)
+                                log.e (i)
+                                peers.push (a)
+                                peers.push (b)
+                            },
+                        })
+                    },
+                    onconnect: peer => {
+                        log.g (a.localDescription.sdp, '\n', a.remoteDescription.sdp)
+                        log.e (i)
+                    },
+                })
+            } else {
+                clearInterval (interval)
             }
-
-            fork ()
-
-        }
+        }, 1000)
+        
     },
 
     format: function (message) {
