@@ -1234,7 +1234,7 @@ var App = $singleton (Component, {
 //         }
 
         var peers = []
-        var n = 10
+        var n = 200
         var i = 0
 
         var interval = setInterval (() => {
