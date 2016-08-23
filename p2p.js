@@ -1209,7 +1209,7 @@ var App = $singleton (Component, {
         this.input = N.one ('.input')
         this.input.onkeypress = this.onkeypress 
         this.input.focus ()
-        this.usage ()
+//         this.usage ()
         
 //         this.net = new Net ()
 //         this.node = this.net.node ({ id: '++++++++++++++++++++++++++++' })
@@ -1234,7 +1234,7 @@ var App = $singleton (Component, {
 //         }
 
         var peers = []
-        var n = 200
+        var n = 10
         var i = 0
 
         var interval = setInterval (() => {
