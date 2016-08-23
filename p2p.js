@@ -967,7 +967,11 @@ var Node = $component ({
               .reject (id => [ this.id, App.node.id ].contains (id))
               .each ((id, i) => {
 
-                  pool.run (() => this.resolvePeer (id, [ App.node.id ]))
+                  pool.run (() => {
+                      return __.delay (500).then (() => {
+                          this.resolvePeer (id, [ App.node.id ])
+                      })
+                  })
               })
                     
 //         var other = 
@@ -1218,7 +1222,7 @@ var App = $singleton (Component, {
             var i = 0
             function fork () {
                 log.ee ('Done:', App.net.attached.length, 'nodes')
-                if (++i < 20) {
+                if (++i < 8) {
                     App.submit ('/offer')
                     setTimeout (fork, i * 1000)
                 }
