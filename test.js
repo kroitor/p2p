@@ -1,3 +1,10 @@
+var i = 0
+var interval
+
+interval = setInterval (tick, 1000)
+
+function tick () { return (i++ < 200) ? pair () : clearInterval (interval) }
+
 function pair () {
 
     var peer1 = new webkitRTCPeerConnection ({
@@ -25,12 +32,6 @@ function pair () {
             })
         }
 
-        peer2.ondatachannel = function (event) {
-            var channel = event.channel
-            channel.onopen = function () { if (channel.readyState === 'open') { console.log ('b connected') }}
-            channel.onclose = function () { /* do nothing */ }
-        }
-
         var channel2 = peer2.createDataChannel ('data')
     }
 
@@ -42,16 +43,8 @@ function pair () {
 
     peer1.ondatachannel = function (event) {
         var channel = event.channel
-        channel.onopen = function () { if (channel.readyState === 'open') { console.log ('a connected') }}
-        channel.onclose = function () { /* do nothing */ }
+        channel.onopen = function () { if (channel.readyState === 'open') { console.log (i + ' connected') }}
     }
 
     var channel1 = peer1.createDataChannel ('data')
 }
-
-(function () {
-    var i = 0
-    var interval
-    function tick () { return (i++ < 200) ? pair () : clearInterval (interval) }
-    interval = setInterval (tick, 1000)
-}) ()
