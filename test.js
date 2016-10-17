@@ -3,11 +3,15 @@ var interval
 
 interval = setInterval (tick, 1000)
 
+window.RTCPeerConnection = window.RTCPeerConnection ||
+                           window.webkitRTCPeerConnection ||
+                           window.mozRTCPeerConnection
+
 function tick () { return (i++ < 200) ? pair () : clearInterval (interval) }
 
 function pair () {
 
-    var peer1 = new webkitRTCPeerConnection ({
+    var peer1 = new RTCPeerConnection ({
         iceServers: [{ urls: [ 'stun:stun.ideasip.com', 'stun:stun.schlund.de' ] }]
     })
 
@@ -15,7 +19,7 @@ function pair () {
 
         if (event.candidate) return; // do nothing, wait for more candidates
             
-        var peer2 = new webkitRTCPeerConnection ({
+        var peer2 = new RTCPeerConnection ({
             iceServers: [{ urls: [ 'stun:stun.ideasip.com', 'stun:stun.schlund.de' ] }]
         })
 
