@@ -47,7 +47,7 @@ function pair () {
 
     peer1.ondatachannel = function (event) {
         var channel = event.channel
-        channel.onopen = function () { if (channel.readyState === 'open') { console.log (i + ' connected') }}
+        channel.onopen = function () { if (channel.readyState === 'open') { document.write ('<pre>' + i + ' connected</pre>') }}
     }
 
     var channel1 = peer1.createDataChannel ('data')
