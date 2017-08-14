@@ -10,6 +10,8 @@ window.RTCPeerConnection = window.RTCPeerConnection ||
 function tick () { return (i++ < 200) ? pair () : clearInterval (interval) }
 
 function pair () {
+  
+    try {
 
     var peer1 = new RTCPeerConnection ({
         iceServers: [{ urls: [ 'stun:stun.ideasip.com', 'stun:stun.schlund.de' ] }]
@@ -51,4 +53,7 @@ function pair () {
     }
 
     var channel1 = peer1.createDataChannel ('data')
-}
+    
+    } catch (e) {
+      alert (e.message)
+    }
